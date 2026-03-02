@@ -32,8 +32,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
 
       - name: Compute cache vars
         id: cache-vars
@@ -66,21 +64,6 @@ jobs:
           echo "release_date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
           echo "release_major=v$major" >> "$GITHUB_OUTPUT"
           echo "release_tag=v$major" >> "$GITHUB_OUTPUT"
-
-      - name: Download previous mappings.json
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          rm -rf /tmp/prev-release
-          mkdir -p /tmp/prev-release
-          gh release download "${{ steps.vars.outputs.release_tag }}" -p "mappings.json" -D /tmp/prev-release || true
-          if [ -f /tmp/prev-release/mappings.json ]; then
-            cp /tmp/prev-release/mappings.json /tmp/mappings.old.json
-          fi
-          if [ ! -s /tmp/mappings.old.json ]; then
-            : > /tmp/mappings.old.json
-          fi
 
       - name: Build mappings
         env:
@@ -130,9 +113,9 @@ jobs:
           set -euo pipefail
           rm -rf /tmp/prev-release
           mkdir -p /tmp/prev-release
-          gh release download "${{ needs.build.outputs.release_tag }}" -p "mappings.json" -D /tmp/prev-release || true
+          gh release download "${{ needs.build.outputs.release_tag }}" --repo "${GITHUB_REPOSITORY}" -p "mappings.json" -D /tmp/prev-release || true
 
-      - name: diff
+      - name: Compute mappings diff
         run: |
           set -euo pipefail
           old_file="/tmp/prev-release/mappings.json"
