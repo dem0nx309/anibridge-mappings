@@ -104,8 +104,7 @@ x[-y][|ratio][,x2[-y2][|ratio2]...]
 
 ## Manual Edits
 
-Mapping overrides live in [mappings.edits.yaml](mappings.edits.yaml). The format mirrors the schema structure: a source descriptor maps to target descriptors,
-which in turn map source ranges to target ranges.
+Mapping overrides live in [mappings.edits.yaml](mappings.edits.yaml). The format mirrors the schema structure: a source descriptor maps to target descriptors, which in turn map source ranges to target ranges.
 
 Example:
 
@@ -114,6 +113,18 @@ anilist:12345: # Some comment about this mapping
   tvdb_show:98765:s1:
     "1-12": "1-12"
   tmdb_show:54321:s1:
+    "1-12": "1-12"
+```
+
+Even if you define a mapping override in the mappings.edits.yaml file, this on its own does not guarantee persistence in the output. Overrides must still be valid according to the validation rules in the pipeline (e.g. episode counts must align with metadata) and mapping edits have a chance of being overridden by inferred mappings from other sources if they conflict. However, if you want to explicitly preserve an override, ignoring potential conflicts and validation issues, prepend the source descriptor or target descriptor with `^`:
+
+```yaml
+^anilist:12345:
+  tvdb_show:98765:s1:
+    "1-12": "1-12"
+
+anilist:12345:
+  ^tvdb_show:98765:s1:
     "1-12": "1-12"
 ```
 

@@ -520,15 +520,17 @@ def _merge_adjacent_numeric_keys(mapping: dict[str, str]) -> dict[str, str]:
 
 def provider_scope_sort_key(k: str):
     """Return a sort key for provider-scoped mapping descriptors."""
-    if k.startswith("$"):
-        return (0, k, "")
+    forced = k.startswith("^")
+    normalized = k.removeprefix("^") if forced else k
+    if normalized.startswith("$"):
+        return (0, normalized, "", 1 if forced else 0)
 
     match = re.match(
         r"^(?P<provider>[a-zA-Z_][a-zA-Z0-9_]*):(?P<id>[^:]+)(?::(?P<scope>[^:]+))?$",
-        k,
+        normalized,
     )
     if not match:
-        return (2, k, "")
+        return (2, normalized, "", 1 if forced else 0)
 
     provider = match.group("provider")
     id_str = match.group("id")
@@ -544,7 +546,8 @@ def provider_scope_sort_key(k: str):
         else:
             scope_match = re.match(r"^s([0-9]+)$", scope)
             scope_key = (2, int(scope_match.group(1))) if scope_match else (3, scope)
-    return (1, provider, id_key, scope_key)
+    return (1, provider, id_key, scope_key, 1 if forced else 0)
+    return (1, provider, id_key, scope_key, 1 if forced else 0)
 
 
 def ordered_payload(d: dict[str, Any]) -> dict[str, Any]:

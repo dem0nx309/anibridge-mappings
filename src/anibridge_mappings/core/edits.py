@@ -15,6 +15,7 @@ from anibridge_mappings.utils.mapping import provider_scope_sort_key
 log = logging.getLogger(__name__)
 
 type Scope = tuple[str, str, str | None]  # (provider, id, scope)
+FORCED_EDIT_PREFIX = "^"
 
 
 class EditError(Exception):
@@ -123,7 +124,7 @@ def apply_edits(
     for src_desc, targets in edits.items():
         if src_desc.startswith("$"):
             continue
-        source = _parse_descriptor(src_desc)
+        source, source_forced, source_descriptor = _parse_edit_descriptor(src_desc)
         processed_targets = set()
 
         for tgt_desc, config in targets.items():
@@ -135,7 +136,7 @@ def apply_edits(
                 )
             processed_targets.add(tgt_desc)
 
-            target = _parse_descriptor(tgt_desc)
+            target, target_forced, target_descriptor = _parse_edit_descriptor(tgt_desc)
             config = config or {}
             ranges = {k: v for k, v in config.items() if not k.startswith("$")}
             _apply_replace(
@@ -144,13 +145,23 @@ def apply_edits(
                 target,
                 ranges,
                 scope_index,
-                source_descriptor=src_desc,
-                target_descriptor=tgt_desc,
+                source_descriptor=source_descriptor,
+                target_descriptor=target_descriptor,
+                force=source_forced or target_forced,
             )
 
         edited_scopes.add(source)
 
     return edited_scopes
+
+
+def _parse_edit_descriptor(descriptor: str) -> tuple[Scope, bool, str]:
+    """Parse an edit descriptor and return its scope plus force metadata."""
+    forced = descriptor.startswith(FORCED_EDIT_PREFIX)
+    normalized = descriptor.removeprefix(FORCED_EDIT_PREFIX)
+    if not normalized:
+        raise EditError("Edit descriptor cannot be empty")
+    return _parse_descriptor(normalized), forced, normalized
 
 
 def _parse_descriptor(descriptor: str) -> Scope:
@@ -221,6 +232,7 @@ def _apply_replace(
     *,
     source_descriptor: str,
     target_descriptor: str,
+    force: bool,
 ) -> None:
     """Replaces mappings for a specific target scope."""
     source_nodes = scope_index.get(source, set())
@@ -252,6 +264,7 @@ def _apply_replace(
                     "target_descriptor": target_descriptor,
                     "source_range": src_rng,
                     "target_range": tgt_rng,
+                    "forced": force,
                 },
             ),
         )
