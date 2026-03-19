@@ -232,6 +232,22 @@ class MappingRangeValidator(MappingValidator):
             ] = {}
             for (t_provider, t_id, t_scope), source_ranges in targets.items():
                 target_descriptor = _descriptor(t_provider, t_id, t_scope)
+                if src_provider == t_provider:
+                    for source_range, target_range in _iter_target_ranges(
+                        source_ranges
+                    ):
+                        issues.append(
+                            self.issue(
+                                "Same-provider cross-link",
+                                source=source_descriptor,
+                                target=target_descriptor,
+                                source_range=source_range,
+                                target_range=target_range,
+                                details={"provider": src_provider},
+                            )
+                        )
+                    continue
+
                 meta = context.meta_store.peek(t_provider, t_id, t_scope)
                 limit = meta.episodes if meta else None
                 target_segments: list[tuple[int, int | None, str, str]] = []
