@@ -11,6 +11,7 @@ from typing import Any
 from anibridge_mappings.core.graph import IdMappingGraph
 from anibridge_mappings.core.meta import MetaStore, SourceType
 from anibridge_mappings.sources.base import IdMappingSource, MetadataSource
+from anibridge_mappings.utils.provider_ids import normalize_imdb_id
 
 log = getLogger(__name__)
 
@@ -198,7 +199,13 @@ class AnimeAggregationsSource(IdMappingSource, MetadataSource):
         imdb_entries = resources.get("IMDB")
         if not isinstance(imdb_entries, list):
             return []
-        normalized = {entry.strip() for entry in imdb_entries if isinstance(entry, str)}
+        normalized = {
+            normalized_id
+            for entry in imdb_entries
+            if isinstance(entry, str)
+            for normalized_id in [normalize_imdb_id(entry)]
+            if normalized_id is not None
+        }
         return sorted(filter(None, normalized))
 
     @staticmethod

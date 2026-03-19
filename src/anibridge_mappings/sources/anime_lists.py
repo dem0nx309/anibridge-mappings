@@ -8,6 +8,7 @@ from lxml import etree
 from anibridge_mappings.core.graph import EpisodeMappingGraph, IdMappingGraph
 from anibridge_mappings.core.meta import MetaStore
 from anibridge_mappings.sources.base import EpisodeMappingSource, IdMappingSource
+from anibridge_mappings.utils.provider_ids import normalize_imdb_id
 
 TargetSpec = tuple[str, str, str, int]
 
@@ -66,7 +67,7 @@ class AnimeListsSource(IdMappingSource, EpisodeMappingSource):
                 ("anidb", anidb_id, scope) for scope in source_scopes
             ]
 
-            imdb_ids = self._split_ids(anime_el.get("imdbid"))
+            imdb_ids = self._split_imdb_ids(anime_el.get("imdbid"))
             tmdb_movie_ids = self._split_ids(anime_el.get("tmdbid"))
 
             tmdb_scope = (
@@ -437,7 +438,7 @@ class AnimeListsSource(IdMappingSource, EpisodeMappingSource):
     def _collect_movie_targets(self, anime_el: etree._Element) -> list[tuple[str, str]]:
         """Return provider/id tuples that should be linked via movie scope."""
         tmdb_movies = self._split_ids(anime_el.get("tmdbid"))
-        imdb_ids = self._split_ids(anime_el.get("imdbid"))
+        imdb_ids = self._split_imdb_ids(anime_el.get("imdbid"))
         tvdb_id_raw = (anime_el.get("tvdbid") or "").strip().lower()
 
         if not tmdb_movies and tvdb_id_raw != "movie":
@@ -645,3 +646,15 @@ class AnimeListsSource(IdMappingSource, EpisodeMappingSource):
         if not raw_value:
             return []
         return [segment.strip() for segment in raw_value.split(",") if segment.strip()]
+
+    @staticmethod
+    def _split_imdb_ids(raw_value: str | None) -> list[str]:
+        """Split and normalize IMDb IDs to valid tconst values."""
+        if not raw_value:
+            return []
+        normalized: list[str] = []
+        for segment in raw_value.split(","):
+            candidate = normalize_imdb_id(segment)
+            if candidate is not None:
+                normalized.append(candidate)
+        return normalized

@@ -14,6 +14,7 @@ import aiohttp
 from anibridge_mappings.core.graph import IdMappingGraph
 from anibridge_mappings.core.meta import MetaStore, SourceMeta, SourceType
 from anibridge_mappings.sources.base import IdMappingSource, MetadataSource
+from anibridge_mappings.utils.provider_ids import normalize_imdb_id
 
 log = getLogger(__name__)
 
@@ -133,7 +134,9 @@ class BaseQleverImdbSource(MetadataSource):
     def _build_query(self, entry_ids: list[str]) -> tuple[str, dict[str, list[str]]]:
         normalized_map: dict[str, list[str]] = {}
         for entry_id in entry_ids:
-            normalized = self._normalize_imdb_id(entry_id)
+            normalized = normalize_imdb_id(entry_id)
+            if normalized is None:
+                continue
             normalized_map.setdefault(normalized, []).append(entry_id)
 
         values = " ".join(f'"{entry_id}"' for entry_id in normalized_map)
@@ -208,19 +211,6 @@ class BaseQleverImdbSource(MetadataSource):
                 meta_by_entry[original_id] = meta
 
         return meta_by_entry
-
-    @staticmethod
-    def _normalize_imdb_id(entry_id: str) -> str:
-        """Normalize IMDb IDs to tconst form (ttXXXXXXX)."""
-        trimmed = entry_id.strip()
-        if trimmed.startswith("tt"):
-            suffix = trimmed[2:]
-            if suffix.isdigit() and len(suffix) < 7:
-                return f"tt{suffix.zfill(7)}"
-            return trimmed
-        if trimmed.isdigit():
-            return f"tt{trimmed.zfill(7)}"
-        return f"tt{trimmed}"
 
     @staticmethod
     def _extract_str(binding: dict[str, Any], key: str) -> str | None:
@@ -363,10 +353,13 @@ class QleverWikidataSource(IdMappingSource):
                 continue
 
             # For numeric providers, prefer the last run of digits in the value.
-            if provider in {
+            if provider == "imdb_movie":
+                entry_id = normalize_imdb_id(raw_id)
+                if entry_id is None:
+                    continue
+            elif provider in {
                 "anidb",
                 "anilist",
-                "imdb_movie",
                 "mal",
                 "tmdb_movie",
             }:
