@@ -19074,15 +19074,14 @@ anilist:21434:
 anilist:21436:
   tvdb_show:292829:s0:
     "1": "1"
-anilist:21437:
-  tvdb_show:262856:s0:
-    "1-2": "7-8"
 ^anilist:21437:
   anidb:10820:S:
     "1-2": "3-4"
   mal:31668:
     "1-2": "1-2"
   tmdb_show:53020:s0:
+    "1-2": "7-8"
+  tvdb_show:262856:s0:
     "1-2": "7-8"
 ^anilist:21438:
   anidb:10820:S:
