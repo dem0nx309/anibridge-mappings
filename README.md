@@ -52,7 +52,7 @@ _For the purposes of this README, we will only cover the subset of the schema th
 
 [mappings.schema.json](./mappings.schema.json)
 
-The output is a JSON object where each key is a **source descriptor** and each value is a map of **target descriptors**. Descriptors use the format:
+The output is a JSON object where each key is a **source descriptor** and each value is a map of **target descriptors**. Mappings are **unidirectional**: a mapping from `A -> B` does not imply `B -> A`, so reverse lookups require their own explicit entries. Descriptors use the format:
 
 ```
 provider:id[:scope]
@@ -66,12 +66,12 @@ Each target descriptor maps source episode ranges to target ranges:
 
 ```jsonc
 {
-  "anidb:1:S": {
-    "tvdb_show:2:s0": {}, // from anidb id 1, specials to tvdb id 2, season 0
-    "tmdb_show:3:s1": {}, // from anidb id 1, specials to tmdb id 3, season 1
+  "tvdb_show:2:s0": {
+    "anilist:1001": {}, // from tvdb id 2, season 0 to anilist id 1001
+    "mal:2001": {}, // from tvdb id 2, season 0 to mal id 2001
   },
-  "mal:4": {
-    "tmdb_show:5:s0": {}, // from mal id 4 (no scope) to tmdb id 5, season 0
+  "tmdb_show:3:s1": {
+    "anilist:1002": {}, // from tmdb id 3, season 1 to anilist id 1002
   },
 }
 ```
@@ -89,12 +89,12 @@ x[-y][|ratio][,x2[-y2][|ratio2]...]
 
 ```jsonc
 {
-  "anidb:5:R": {
-    "tvdb_show:6:s0": {
+  "tmdb_show:500:s1": {
+    "anilist:1003": {
       "1-12": "1-12", // source episodes 1-12 map to target episodes 1-12
       "14-": "13-", // source episodes 14 and onward map to target episodes 13 and onward
     },
-    "anilist:7": {
+    "mal:2003": {
       "1-12": "1-6,8-13", // source episodes 1-12 map to target episodes 1-6 and 8-13 (skipping 7)
       "13-": "14-|2", // source episodes 13 and onward map to target episodes 14 and onward at double granularity
     },
