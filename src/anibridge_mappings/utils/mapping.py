@@ -4,6 +4,13 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
+from anibridge.utils.mappings import (
+    AnibridgeMapping,
+    AnibridgeMappingRange,
+    is_valid_target_range,
+    parse_mapping_descriptor,
+)
+
 from anibridge_mappings.core.graph import EpisodeMappingGraph
 
 SourceNode = tuple[str, str, str | None]
@@ -23,14 +30,7 @@ def parse_descriptor(descriptor: str) -> tuple[str, str, str | None]:
     Returns:
         tuple[str, str, str | None]: Provider, entry ID, and optional scope.
     """
-    parts = descriptor.split(":", 2)
-    if len(parts) == 2:
-        provider, entry_id = parts
-        return provider, entry_id, None
-    if len(parts) == 3:
-        provider, entry_id, scope = parts
-        return provider, entry_id, scope
-    raise ValueError(f"Invalid descriptor: {descriptor}")
+    return parse_mapping_descriptor(descriptor)
 
 
 def normalize_episode_key(value: str | None) -> str | None:
@@ -48,22 +48,6 @@ def normalize_episode_key(value: str | None) -> str | None:
     if not trimmed:
         return None
     return trimmed or None
-
-
-def split_ratio(range_key: str) -> tuple[str, int | None] | None:
-    """Split a range key into base range and optional ratio."""
-    if "|" not in range_key:
-        return range_key, None
-    base, ratio_raw = range_key.split("|", 1)
-    if ratio_raw == "":
-        return None
-    try:
-        ratio = int(ratio_raw)
-    except ValueError:
-        return None
-    if ratio == 0:
-        return None
-    return base, ratio
 
 
 def parse_range_bounds(range_key: str) -> tuple[int, int | None] | None:
@@ -84,33 +68,21 @@ def parse_range_bounds(range_key: str) -> tuple[int, int | None] | None:
     if "," in normalized:
         return None
 
-    split = split_ratio(normalized)
-    if split is None:
-        return None
-    base, _ratio = split
-
-    if "-" in base:
-        left, right = base.split("-", 1)
-        try:
-            start = int(left)
-        except ValueError:
+    base = normalized
+    if "|" in normalized:
+        if not is_valid_target_range(normalized):
             return None
-        end: int | None
-        if right == "":
-            end = None
-        else:
-            try:
-                end = int(right)
-            except ValueError:
-                return None
-        if end is not None and start > end:
-            start, end = end, start
-        return (start, end)
+        base, _ratio = normalized.rsplit("|", 1)
+
+    if "," in base:
+        return None
+
     try:
-        value = int(base)
+        parsed = AnibridgeMappingRange.parse(base)
     except ValueError:
         return None
-    return (value, value)
+
+    return (parsed.start, parsed.end)
 
 
 def build_source_target_map(graph: EpisodeMappingGraph) -> SourceTargetMap:
@@ -174,36 +146,28 @@ def collapse_source_mappings(source_map: Mapping[str, set[str]]) -> dict[str, st
     special_entries: dict[str, set[str]] = {}
 
     for source_range, target_ranges in source_map.items():
-        source_parts = [
-            part.strip() for part in source_range.split(",") if part.strip()
-        ]
-        for part in source_parts:
-            if "|" in part:
-                special_entries[part] = target_ranges
+        normalized_source = source_range.strip()
+        bounds = parse_range_bounds(normalized_source)
+        if bounds is not None:
+            start, end = bounds
+            if end is not None:
+                target_bounds = [parse_range_bounds(value) for value in target_ranges]
+                all_numeric = all(
+                    bound is not None and bound[1] is not None
+                    for bound in target_bounds
+                )
+                source_len = end - start + 1
+                numeric_targets = _expand_numeric_targets(target_ranges)
+                if (
+                    all_numeric
+                    and numeric_targets
+                    and len(numeric_targets) == source_len
+                ):
+                    numeric_entries.append(((start, end), target_ranges))
+                else:
+                    special_entries[normalized_source] = target_ranges
                 continue
-            bounds = parse_range_bounds(part)
-            if bounds is not None:
-                start, end = bounds
-                if end is not None:
-                    target_bounds = [
-                        parse_range_bounds(value) for value in target_ranges
-                    ]
-                    all_numeric = all(
-                        bound is not None and bound[1] is not None
-                        for bound in target_bounds
-                    )
-                    source_len = end - start + 1
-                    numeric_targets = _expand_numeric_targets(target_ranges)
-                    if (
-                        all_numeric
-                        and numeric_targets
-                        and len(numeric_targets) == source_len
-                    ):
-                        numeric_entries.append(((start, end), target_ranges))
-                    else:
-                        special_entries[part] = target_ranges
-                    continue
-            special_entries[part] = target_ranges
+        special_entries[normalized_source] = target_ranges
 
     result: dict[str, str] = {}
     if numeric_entries:
@@ -416,11 +380,39 @@ def _expand_numeric_targets(values: set[str]) -> list[int]:
     """Expand numeric target range strings into integers."""
     numbers: set[int] = set()
     for value in values:
-        bounds = parse_range_bounds(value)
-        if bounds is not None and bounds[1] is not None:
-            numbers.update(range(bounds[0], bounds[1] + 1))
-        elif value.isdigit():
-            numbers.add(int(value))
+        normalized = value.strip()
+        if not normalized:
+            continue
+        if not is_valid_target_range(normalized):
+            continue
+
+        try:
+            parsed_mapping = AnibridgeMapping.parse("1", normalized)
+        except ValueError:
+            # Parsing with a fixed source can fail due ratio arithmetic; fall
+            # back to parsing each target segment shape.
+            ranges_part = (
+                normalized.rsplit("|", 1)[0] if "|" in normalized else normalized
+            )
+            target_ranges: list[AnibridgeMappingRange] = []
+            for part in ranges_part.split(","):
+                segment = part.strip()
+                if not segment:
+                    continue
+                try:
+                    target_ranges.append(AnibridgeMappingRange.parse(segment))
+                except ValueError:
+                    target_ranges = []
+                    break
+            if not target_ranges:
+                continue
+        else:
+            target_ranges = list(parsed_mapping.target_ranges)
+
+        for segment in target_ranges:
+            if segment.end is None:
+                continue
+            numbers.update(range(segment.start, segment.end + 1))
     return sorted(numbers)
 
 

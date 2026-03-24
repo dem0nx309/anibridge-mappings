@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from anibridge.utils.mappings import parse_mapping_descriptor
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
 from ruamel.yaml.scalarstring import DoubleQuotedScalarString
@@ -166,18 +167,17 @@ def _parse_edit_descriptor(descriptor: str) -> tuple[Scope, bool, str]:
 
 def _parse_descriptor(descriptor: str) -> Scope:
     """Parses 'provider:id[:scope]' string into a tuple."""
-    parts = descriptor.split(":")
-    if len(parts) == 2:
-        provider, entry_id = parts
-        if provider == "anidb":  # Special handling to normalize Anidb scope
-            return provider, entry_id, "R"
-        return provider, entry_id, None
-    if len(parts) == 3:
-        return parts[0], parts[1], parts[2]
-    raise EditError(
-        "Invalid descriptor: "
-        f"'{descriptor}'. Expected 'provider:id' or 'provider:id:scope'"
-    )
+    try:
+        provider, entry_id, scope = parse_mapping_descriptor(descriptor)
+    except ValueError as exc:
+        raise EditError(
+            "Invalid descriptor: "
+            f"'{descriptor}'. Expected 'provider:id' or 'provider:id:scope'"
+        ) from exc
+
+    if provider == "anidb" and scope is None:
+        return provider, entry_id, "R"
+    return provider, entry_id, scope
 
 
 def _build_scope_index(

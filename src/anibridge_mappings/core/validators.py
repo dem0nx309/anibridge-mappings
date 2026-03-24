@@ -2,16 +2,21 @@
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
+
+from anibridge.utils.mappings import (
+    AnibridgeMapping,
+    AnibridgeMappingRange,
+    format_mapping_range,
+    is_valid_target_range,
+)
 
 from anibridge_mappings.core.graph import EpisodeMappingGraph, IdMappingGraph
 from anibridge_mappings.core.meta import MetaStore
 from anibridge_mappings.utils.mapping import (
     SourceTargetMap,
     build_source_target_map,
-    parse_range_bounds,
     provider_scope_sort_key,
-    split_ratio,
 )
 
 
@@ -95,31 +100,6 @@ class MappingValidator:
         )
 
 
-@dataclass(slots=True)
-class RangeSpec:
-    """Parsed range specification data."""
-
-    raw: str
-    base: str | None
-    ratio: int | None
-    bounds: tuple[int, int | None] | None
-
-    @property
-    def is_valid(self) -> bool:
-        """Return True when both base and bounds parsed successfully."""
-        return self.base is not None and self.bounds is not None
-
-
-@dataclass(slots=True)
-class SegmentBounds:
-    """Parsed segment bounds with metadata."""
-
-    start: int
-    end: int | None
-    ratio: int | None
-    raw: str
-
-
 def _descriptor(provider: str, entry_id: str, scope: str | None) -> str:
     """Build a provider descriptor string from components."""
     if scope is None:
@@ -137,34 +117,29 @@ def _iter_target_ranges(
             yield source_range, target_range
 
 
-def _range_length_and_ratio(range_key: str) -> tuple[int, int | None] | None:
-    """Return (length, ratio) for a simple numeric range key, if possible."""
-    if not range_key or "," in range_key:
+def _parse_source_range(range_key: str) -> AnibridgeMappingRange | None:
+    """Parse one source range using the canonical anibridge-utils parser."""
+    normalized = range_key.strip()
+    if not normalized:
         return None
-    spec = _parse_range_spec(range_key)
-    if not spec.is_valid or spec.bounds is None or spec.bounds[1] is None:
+    try:
+        return AnibridgeMappingRange.parse(normalized)
+    except ValueError:
         return None
-    start, end_opt = spec.bounds
-    end = cast(int, end_opt)
-    return (end - start + 1, spec.ratio)
 
 
-def _iter_target_segment_strings(target_range: str) -> Iterable[str]:
-    """Yield individual target range segments (comma-separated)."""
-    for segment in target_range.split(","):
-        segment = segment.strip()
-        if segment:
-            yield segment
+def _parse_mapping_pair(
+    source_range: str,
+    target_range: str,
+) -> tuple[AnibridgeMapping | None, str | None]:
+    """Parse one source-target mapping pair.
 
-
-def _parse_range_spec(range_key: str) -> RangeSpec:
-    """Parse a range key into its base, ratio, and bounds."""
-    split = split_ratio(range_key)
-    if split is None:
-        return RangeSpec(raw=range_key, base=None, ratio=None, bounds=None)
-    base, ratio = split
-    bounds = parse_range_bounds(base)
-    return RangeSpec(raw=range_key, base=base, ratio=ratio, bounds=bounds)
+    Returns mapping object and optional parsing error detail.
+    """
+    try:
+        return AnibridgeMapping.parse(source_range, target_range), None
+    except ValueError as exc:
+        return None, str(exc)
 
 
 def _ranges_overlap(
@@ -178,36 +153,6 @@ def _ranges_overlap(
         (end_a is not None and end_a < start_b)
         or (end_b is not None and end_b < start_a)
     )
-
-
-def _iter_segment_bounds(target_range: str) -> Iterable[SegmentBounds]:
-    """Yield parsed bounds for each target range segment."""
-    for segment in _iter_target_segment_strings(target_range):
-        spec = _parse_range_spec(segment)
-        if not spec.is_valid or spec.bounds is None:
-            continue
-        start, end = spec.bounds
-        yield SegmentBounds(
-            start=start,
-            end=end,
-            ratio=spec.ratio,
-            raw=segment,
-        )
-
-
-def _segment_source_units(segment: SegmentBounds) -> int | None:
-    """Return source units represented by a target segment, if determinable."""
-    if segment.end is None:
-        return None
-    length = segment.end - segment.start + 1
-    if segment.ratio is None:
-        return length
-    if segment.ratio < 0:
-        divisor = abs(segment.ratio)
-        if length % divisor != 0:
-            return None
-        return length // divisor
-    return length * segment.ratio
 
 
 class MappingRangeValidator(MappingValidator):
@@ -254,19 +199,8 @@ class MappingRangeValidator(MappingValidator):
                 target_segments: list[tuple[int, int | None, str, str]] = []
 
                 for source_range, target_range in _iter_target_ranges(source_ranges):
-                    source_spec = _parse_range_spec(source_range)
-                    if "," in source_range:
-                        issues.append(
-                            self.issue(
-                                "Source ranges must be contiguous (no commas)",
-                                source=source_descriptor,
-                                target=target_descriptor,
-                                source_range=source_range,
-                                target_range=target_range,
-                                details={"source_range": source_range},
-                            )
-                        )
-                    if not source_spec.is_valid:
+                    source_segment = _parse_source_range(source_range)
+                    if source_segment is None:
                         issues.append(
                             self.issue(
                                 "Invalid source range syntax",
@@ -277,8 +211,9 @@ class MappingRangeValidator(MappingValidator):
                                 details={"source_range": source_range},
                             )
                         )
-                    elif source_spec.bounds is not None:
-                        source_start, source_end = source_spec.bounds
+                    else:
+                        source_start = source_segment.start
+                        source_end = source_segment.end
                         provider_source_ranges.setdefault(t_provider, []).append(
                             (
                                 source_start,
@@ -289,13 +224,31 @@ class MappingRangeValidator(MappingValidator):
                             )
                         )
 
-                    src_info = _range_length_and_ratio(source_range)
-                    src_len: int | None = None
-                    src_ratio: int | None = None
-                    if src_info is not None:
-                        src_len, src_ratio = src_info
+                    parsed_mapping, parse_error = _parse_mapping_pair(
+                        source_range,
+                        target_range,
+                    )
+                    if parsed_mapping is None:
+                        if not is_valid_target_range(target_range.strip()):
+                            message = "Invalid target range syntax"
+                        else:
+                            message = "Invalid mapping ratio semantics"
+                        issues.append(
+                            self.issue(
+                                message,
+                                source=source_descriptor,
+                                target=target_descriptor,
+                                source_range=source_range,
+                                target_range=target_range,
+                                details={
+                                    "target_range": target_range,
+                                    "error": parse_error,
+                                },
+                            )
+                        )
+                        continue
 
-                    segments = list(_iter_segment_bounds(target_range))
+                    segments = list(parsed_mapping.target_ranges)
                     for segment in segments:
                         target_segments.append(
                             (
@@ -315,10 +268,12 @@ class MappingRangeValidator(MappingValidator):
                                             source=source_descriptor,
                                             target=target_descriptor,
                                             source_range=source_range,
-                                            target_range=segment.raw,
+                                            target_range=format_mapping_range(segment),
                                             details={
                                                 "source_range": source_range,
-                                                "target_range": segment.raw,
+                                                "target_range": format_mapping_range(
+                                                    segment
+                                                ),
                                                 "episode_limit": limit,
                                             },
                                         )
@@ -330,29 +285,16 @@ class MappingRangeValidator(MappingValidator):
                                         source=source_descriptor,
                                         target=target_descriptor,
                                         source_range=source_range,
-                                        target_range=segment.raw,
+                                        target_range=format_mapping_range(segment),
                                         details={
                                             "source_range": source_range,
-                                            "target_range": segment.raw,
+                                            "target_range": format_mapping_range(
+                                                segment
+                                            ),
                                             "episode_limit": limit,
                                         },
                                     )
                                 )
-
-                    for segment in _iter_target_segment_strings(target_range):
-                        target_spec = _parse_range_spec(segment)
-                        if target_spec.is_valid:
-                            continue
-                        issues.append(
-                            self.issue(
-                                "Invalid target range syntax",
-                                source=source_descriptor,
-                                target=target_descriptor,
-                                source_range=source_range,
-                                target_range=segment,
-                                details={"target_range": segment},
-                            )
-                        )
 
                     if len(segments) > 1:
                         segments.sort(
@@ -377,8 +319,8 @@ class MappingRangeValidator(MappingValidator):
                                         source_range=source_range,
                                         target_range=target_range,
                                         details={
-                                            "overlaps_with": prev.raw,
-                                            "segment": current.raw,
+                                            "overlaps_with": format_mapping_range(prev),
+                                            "segment": format_mapping_range(current),
                                         },
                                     )
                                 )
@@ -390,39 +332,6 @@ class MappingRangeValidator(MappingValidator):
                             )
                             if current_end_value > prev_end_value:
                                 prev = current
-
-                    if src_len is None or src_ratio is not None:
-                        continue
-                    if not segments:
-                        continue
-
-                    segment_units: list[int] = []
-                    units_unknown = False
-                    for segment in segments:
-                        units = _segment_source_units(segment)
-                        if units is None:
-                            units_unknown = True
-                            break
-                        segment_units.append(units)
-
-                    if units_unknown or not segment_units:
-                        continue
-
-                    total_units = sum(segment_units)
-                    if total_units != src_len:
-                        issues.append(
-                            self.issue(
-                                "Target segments expand beyond source range units",
-                                source=source_descriptor,
-                                target=target_descriptor,
-                                source_range=source_range,
-                                target_range=target_range,
-                                details={
-                                    "source_units": src_len,
-                                    "target_units": total_units,
-                                },
-                            )
-                        )
 
                 if len(target_segments) > 1:
                     target_segments.sort(
