@@ -197,6 +197,10 @@ class MappingRangeValidator(MappingValidator):
                 meta = context.meta_store.peek(t_provider, t_id, t_scope)
                 limit = meta.episodes if meta else None
                 target_segments: list[tuple[int, int | None, str, str]] = []
+                source_range_targets: dict[
+                    str,
+                    list[tuple[str, list[tuple[int, int | None]]]],
+                ] = {}
 
                 for source_range, target_range in _iter_target_ranges(source_ranges):
                     source_segment = _parse_source_range(source_range)
@@ -250,6 +254,46 @@ class MappingRangeValidator(MappingValidator):
                         continue
 
                     segments = list(parsed_mapping.target_ranges)
+
+                    candidate_bounds = [
+                        (segment.start, segment.end) for segment in segments
+                    ]
+                    existing = source_range_targets.setdefault(source_range, [])
+                    overlap_with = next(
+                        (
+                            prev_target_range
+                            for prev_target_range, prev_bounds in existing
+                            if any(
+                                _ranges_overlap(
+                                    cur_start,
+                                    cur_end,
+                                    prev_start,
+                                    prev_end,
+                                )
+                                for cur_start, cur_end in candidate_bounds
+                                for prev_start, prev_end in prev_bounds
+                            )
+                        ),
+                        None,
+                    )
+                    if overlap_with is not None:
+                        issues.append(
+                            self.issue(
+                                "Overlapping target ranges for the same source range",
+                                source=source_descriptor,
+                                target=target_descriptor,
+                                source_range=source_range,
+                                target_range=target_range,
+                                details={
+                                    "source_range": source_range,
+                                    "target_range": target_range,
+                                    "overlaps_with_target_range": overlap_with,
+                                },
+                            )
+                        )
+                    else:
+                        existing.append((target_range, candidate_bounds))
+
                     for segment in segments:
                         target_segments.append(
                             (
