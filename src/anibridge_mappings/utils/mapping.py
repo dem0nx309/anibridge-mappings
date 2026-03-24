@@ -50,6 +50,39 @@ def normalize_episode_key(value: str | None) -> str | None:
     return trimmed or None
 
 
+def _normalize_reversed_ratio(
+    source_range: str,
+    target_range: str,
+) -> tuple[str, str]:
+    """Move source ratio onto target as a negative trailing ratio.
+
+    Reversed edges can surface ranges like `1|2 -> 1-2`, but source ranges
+    cannot carry ratios in the emitted schema. Convert that to
+    `1 -> 1-2|-2`.
+    """
+    normalized_source = source_range.strip()
+    normalized_target = target_range.strip()
+
+    if "|" not in normalized_source or "," in normalized_source:
+        return normalized_source, normalized_target
+    if not is_valid_target_range(normalized_source):
+        return normalized_source, normalized_target
+
+    base_source, ratio_raw = normalized_source.rsplit("|", 1)
+    try:
+        ratio = int(ratio_raw)
+    except ValueError:
+        return normalized_source, normalized_target
+    if ratio == 0:
+        return normalized_source, normalized_target
+    if "|" in normalized_target:
+        # Keep existing target ratio when present
+        return base_source, normalized_target
+
+    moved_ratio = -abs(ratio)
+    return base_source, f"{normalized_target}|{moved_ratio}"
+
+
 def parse_range_bounds(range_key: str) -> tuple[int, int | None] | None:
     """Return inclusive (start, end) bounds for a normalized range key.
 
@@ -122,6 +155,11 @@ def build_source_target_map(graph: EpisodeMappingGraph) -> SourceTargetMap:
             target_range = normalize_episode_key(target_range_raw)
             if target_range is None:
                 continue
+
+            source_range, target_range = _normalize_reversed_ratio(
+                source_range,
+                target_range,
+            )
 
             source_bucket = source_mappings.setdefault((provider, entry_id, scope), {})
             target_bucket = source_bucket.setdefault(
