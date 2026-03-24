@@ -15,7 +15,7 @@ _A huge thank you to the primary mappings maintainer, [@LuceoEtzio](https://gith
 ## Key Features
 
 - **Multi-source aggregation**: Combines ID and episode data from multiple upstream projects.
-- **Episode range mapping**: Supports explicit ranges, open-ended ranges, and ratio-based mappings between providers.
+- **Episode range mapping**: Supports explicit ranges, open-ended ranges, and target-side ratio mappings between providers.
 - **Manual overrides**: Curated edits are applied on top of automated sources.
 - **Metadata-informed validation**: Episode counts from metadata providers are used to validate and prune invalid ranges and infer missing mappings.
 - **Compressed outputs**: Supports minified and zstd-compressed payloads for efficient storage and transfer.
@@ -76,16 +76,25 @@ Each target descriptor maps source episode ranges to target ranges:
 }
 ```
 
-The key, value of each target descriptor is a map where keys denote a source range and values denote the corresponding target range. For the purposes of this dataset, keys and values will define episode ranges. Ranges use the format:
+The key, value of each target descriptor is a map where keys denote a source range and values denote the corresponding target range. For the purposes of this dataset, keys and values will define episode ranges.
+
+Source ranges must be a single contiguous range:
 
 ```
-x[-y][|ratio][,x2[-y2][|ratio2]...]
+x[-y]
+```
+
+Target ranges support comma-separated segments and an optional trailing ratio:
+
+```
+x[-y][,x2[-y2]...][|ratio]
 ```
 
 - `x`: starting episode number (1-based).
 - `y`: optional ending episode number (inclusive). If omitted, the range is open-ended.
-- `ratio`: optional ratio indicating the 'weight' of each episode in a range. A positive ratio `n` indicates each episode spans `n` episodes in the opposing range. A negative ratio `-n` indicates each episode spans `1/n` episodes in the opposing range.
+- `ratio`: optional ratio indicating the 'weight' of each episode in a target mapping. A positive ratio `n` indicates each source episode spans `n` target episodes. A negative ratio `-n` indicates each source episode spans `1/n` target episodes.
 - Multiple ranges can be comma-separated to denote non-contiguous mappings. _Note: non-contiguous ranges are only supported on the target side._
+- The ratio must appear at the end of the target range string.
 
 ```jsonc
 {
