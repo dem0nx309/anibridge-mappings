@@ -174,7 +174,7 @@ class MappingRangeValidator(MappingValidator):
         for (src_provider, src_id, src_scope), targets in context.source_map.items():
             source_descriptor = _descriptor(src_provider, src_id, src_scope)
             provider_source_ranges: dict[
-                str, list[tuple[int, int | None, str, str, str]]
+                str, list[tuple[int, int | None, str, str, str, str]]
             ] = {}
             for (t_provider, t_id, t_scope), source_ranges in targets.items():
                 target_descriptor = _descriptor(t_provider, t_id, t_scope)
@@ -219,6 +219,7 @@ class MappingRangeValidator(MappingValidator):
                                 source_start,
                                 source_end,
                                 target_descriptor,
+                                t_id,
                                 source_range,
                                 target_range,
                             )
@@ -380,16 +381,24 @@ class MappingRangeValidator(MappingValidator):
                         item[0],
                         10**9 if item[1] is None else item[1],
                         provider_scope_sort_key(item[2]),
-                        item[3],
                         item[4],
+                        item[5],
                     )
                 )
-                accepted: list[tuple[int, int | None, str, str, str]] = []
-                for start, end, target_descriptor, source_range, target_range in items:
+                accepted: list[tuple[int, int | None, str, str, str, str]] = []
+                for (
+                    start,
+                    end,
+                    target_descriptor,
+                    target_id,
+                    source_range,
+                    target_range,
+                ) in items:
                     overlap_with = next(
                         (
                             accepted_item
                             for accepted_item in accepted
+                            if target_id != accepted_item[3]
                             if _ranges_overlap(
                                 start,
                                 end,
@@ -405,26 +414,34 @@ class MappingRangeValidator(MappingValidator):
                                 start,
                                 end,
                                 target_descriptor,
+                                target_id,
                                 source_range,
                                 target_range,
                             )
                         )
                         continue
 
-                    _, _, prev_target, prev_source_range, prev_target_range = (
-                        overlap_with
-                    )
+                    (
+                        _,
+                        _,
+                        prev_target,
+                        prev_target_id,
+                        prev_source_range,
+                        prev_target_range,
+                    ) = overlap_with
                     issues.append(
                         self.issue(
                             "Overlapping source episode ranges for the same target "
-                            "provider",
+                            "provider across IDs",
                             source=source_descriptor,
                             target=target_descriptor,
                             source_range=source_range,
                             target_range=target_range,
                             details={
                                 "target_provider": target_provider,
+                                "target_id": target_id,
                                 "overlaps_with_target": prev_target,
+                                "overlaps_with_target_id": prev_target_id,
                                 "overlaps_with_source_range": prev_source_range,
                                 "overlaps_with_target_range": prev_target_range,
                             },
