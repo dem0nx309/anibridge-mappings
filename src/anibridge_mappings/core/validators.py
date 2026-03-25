@@ -4,15 +4,18 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
-from anibridge.utils.mappings import (
-    AnibridgeMapping,
-    AnibridgeMappingRange,
-    format_mapping_range,
-    is_valid_target_range,
-)
+from anibridge.utils.mappings import format_mapping_range
 
 from anibridge_mappings.core.graph import EpisodeMappingGraph, IdMappingGraph
 from anibridge_mappings.core.meta import MetaStore
+from anibridge_mappings.core.range_specs import (
+    TargetSpec,
+    has_internal_overlap,
+    parse_source_segment,
+    parse_target_spec,
+    ranges_overlap,
+    target_units,
+)
 from anibridge_mappings.utils.mapping import (
     SourceTargetMap,
     build_source_target_map,
@@ -35,11 +38,7 @@ class ValidationIssue:
 
 @dataclass(slots=True)
 class ValidationContext:
-    """Shared context for validators.
-
-    This caches the computed source-target map so that validators
-    can iterate the same derived structures without recomputing them.
-    """
+    """Shared context for validators."""
 
     episode_graph: EpisodeMappingGraph
     meta_store: MetaStore
@@ -53,7 +52,7 @@ class ValidationContext:
         meta_store: MetaStore,
         id_graph: IdMappingGraph,
     ) -> ValidationContext:
-        """Construct a validation context with a cached source map."""
+        """Build a validation context from graph and metadata inputs."""
         return cls(
             episode_graph=episode_graph,
             meta_store=meta_store,
@@ -68,14 +67,7 @@ class MappingValidator:
     name: str = "validator"
 
     def validate(self, context: ValidationContext) -> list[ValidationIssue]:
-        """Return validation issues for the provided graphs.
-
-        Args:
-            context (ValidationContext): Shared validation context.
-
-        Returns:
-            list[ValidationIssue]: Validation issues, if any.
-        """
+        """Validate mappings and return all issues found."""
         raise NotImplementedError
 
     def issue(
@@ -88,7 +80,7 @@ class MappingValidator:
         target_range: str | None = None,
         details: dict[str, Any] | None = None,
     ) -> ValidationIssue:
-        """Build a standardized validation issue."""
+        """Create a typed issue entry owned by this validator."""
         return ValidationIssue(
             validator=self.name,
             message=message,
@@ -100,110 +92,47 @@ class MappingValidator:
         )
 
 
-def _descriptor(provider: str, entry_id: str, scope: str | None) -> str:
-    """Build a provider descriptor string from components."""
-    if scope is None:
-        return f"{provider}:{entry_id}"
-    return f"{provider}:{entry_id}:{scope}"
-
-
-def _iter_target_ranges(
-    source_ranges: dict[str, set[str]],
-) -> Iterable[tuple[str, str]]:
-    """Yield (source_range, target_range_spec) pairs from a source-range map."""
-    for source_range in sorted(source_ranges):
-        target_ranges = source_ranges[source_range]
-        for target_range in sorted(target_ranges):
-            yield source_range, target_range
-
-
-def _parse_source_range(range_key: str) -> AnibridgeMappingRange | None:
-    """Parse one source range using the canonical anibridge-utils parser."""
-    normalized = range_key.strip()
-    if not normalized:
-        return None
-    try:
-        return AnibridgeMappingRange.parse(normalized)
-    except ValueError:
-        return None
-
-
-def _parse_mapping_pair(
-    source_range: str,
-    target_range: str,
-) -> tuple[AnibridgeMapping | None, str | None]:
-    """Parse one source-target mapping pair.
-
-    Returns mapping object and optional parsing error detail.
-    """
-    try:
-        return AnibridgeMapping.parse(source_range, target_range), None
-    except ValueError as exc:
-        return None, str(exc)
-
-
-def _ranges_overlap(
-    start_a: int,
-    end_a: int | None,
-    start_b: int,
-    end_b: int | None,
-) -> bool:
-    """Return True if two inclusive ranges overlap (supports open-ended)."""
-    return not (
-        (end_a is not None and end_a < start_b)
-        or (end_b is not None and end_b < start_a)
-    )
-
-
 class MappingRangeValidator(MappingValidator):
     """Validate mapping range syntax and consistency."""
 
     name = "mapping_ranges"
 
     def validate(self, context: ValidationContext) -> list[ValidationIssue]:
-        """Return issues found across source/target range specifications.
-
-        Args:
-            context (ValidationContext): Shared validation context.
-
-        Returns:
-            list[ValidationIssue]: Range validation issues found.
-        """
+        """Run all range validations against the mapping context."""
         issues: list[ValidationIssue] = []
 
-        for (src_provider, src_id, src_scope), targets in context.source_map.items():
-            source_descriptor = _descriptor(src_provider, src_id, src_scope)
-            provider_source_ranges: dict[
-                str, list[tuple[int, int | None, str, str, str, str]]
+        for source_scope, targets in context.source_map.items():
+            source_descriptor = _descriptor(*source_scope)
+            provider_windows: dict[
+                str,
+                list[tuple[int, int | None, str, str, str, str]],
             ] = {}
-            for (t_provider, t_id, t_scope), source_ranges in targets.items():
-                target_descriptor = _descriptor(t_provider, t_id, t_scope)
-                if src_provider == t_provider:
-                    for source_range, target_range in _iter_target_ranges(
-                        source_ranges
-                    ):
-                        issues.append(
-                            self.issue(
-                                "Same-provider cross-link",
-                                source=source_descriptor,
-                                target=target_descriptor,
-                                source_range=source_range,
-                                target_range=target_range,
-                                details={"provider": src_provider},
-                            )
+
+            for target_scope, source_ranges in targets.items():
+                target_descriptor = _descriptor(*target_scope)
+                target_provider, target_id, _target_scope_value = target_scope
+
+                if source_scope[0] == target_provider:
+                    issues.extend(
+                        self.issue(
+                            "Same-provider cross-link",
+                            source=source_descriptor,
+                            target=target_descriptor,
+                            source_range=src,
+                            target_range=tgt,
+                            details={"provider": source_scope[0]},
                         )
+                        for src, tgt in _iter_target_ranges(source_ranges)
+                    )
                     continue
 
-                meta = context.meta_store.peek(t_provider, t_id, t_scope)
-                limit = meta.episodes if meta else None
-                target_segments: list[tuple[int, int | None, str, str]] = []
-                source_range_targets: dict[
-                    str,
-                    list[tuple[str, list[tuple[int, int | None]]]],
-                ] = {}
+                meta = context.meta_store.peek(*target_scope)
+                episode_limit = meta.episodes if meta else None
+                target_scope_windows: list[tuple[int, int | None, str, str]] = []
+                source_targets: dict[str, list[tuple[str, TargetSpec]]] = {}
 
                 for source_range, target_range in _iter_target_ranges(source_ranges):
-                    source_segment = _parse_source_range(source_range)
+                    source_segment = parse_source_segment(source_range)
                     if source_segment is None:
                         issues.append(
                             self.issue(
@@ -215,281 +144,413 @@ class MappingRangeValidator(MappingValidator):
                                 details={"source_range": source_range},
                             )
                         )
-                    else:
-                        source_start = source_segment.start
-                        source_end = source_segment.end
-                        provider_source_ranges.setdefault(t_provider, []).append(
-                            (
-                                source_start,
-                                source_end,
-                                target_descriptor,
-                                t_id,
-                                source_range,
-                                target_range,
+                        continue
+
+                    spec = parse_target_spec(target_range)
+                    if spec is None:
+                        issues.append(
+                            self.issue(
+                                "Invalid target range syntax",
+                                source=source_descriptor,
+                                target=target_descriptor,
+                                source_range=source_range,
+                                target_range=target_range,
+                                details={"target_range": target_range},
                             )
                         )
+                        continue
 
-                    parsed_mapping, parse_error = _parse_mapping_pair(
+                    provider_windows.setdefault(target_provider, []).append(
+                        (
+                            source_segment.start,
+                            source_segment.end,
+                            target_descriptor,
+                            target_id,
+                            source_range,
+                            target_range,
+                        )
+                    )
+
+                    _validate_same_source_target_overlap(
+                        self,
+                        issues,
+                        source_descriptor,
+                        target_descriptor,
+                        source_range,
+                        target_range,
+                        spec,
+                        source_targets,
+                    )
+                    _validate_target_spec_shape(
+                        self,
+                        issues,
+                        source_descriptor,
+                        target_descriptor,
+                        source_range,
+                        target_range,
+                        spec,
+                    )
+                    _validate_target_limit(
+                        self,
+                        issues,
+                        source_descriptor,
+                        target_descriptor,
+                        source_range,
+                        spec,
+                        episode_limit,
+                    )
+                    _validate_units(
+                        self,
+                        issues,
+                        source_descriptor,
+                        target_descriptor,
+                        source_segment,
+                        source_range,
+                        target_range,
+                        spec,
+                    )
+
+                    for segment in spec.segments:
+                        target_scope_windows.append(
+                            (segment.start, segment.end, source_range, target_range)
+                        )
+
+                _validate_target_scope_overlap(
+                    self,
+                    issues,
+                    source_descriptor,
+                    target_descriptor,
+                    target_scope_windows,
+                )
+
+            _validate_provider_cross_id_overlap(
+                self,
+                issues,
+                source_descriptor,
+                provider_windows,
+            )
+
+        return issues
+
+
+def _iter_target_ranges(
+    source_ranges: dict[str, set[str]],
+) -> Iterable[tuple[str, str]]:
+    """Yield normalized source-target range pairs in stable order."""
+    for source_range in sorted(source_ranges):
+        for target_range in sorted(source_ranges[source_range]):
+            yield source_range, target_range
+
+
+def _descriptor(provider: str, entry_id: str, scope: str | None) -> str:
+    """Format a provider descriptor from tuple parts."""
+    if scope is None:
+        return f"{provider}:{entry_id}"
+    return f"{provider}:{entry_id}:{scope}"
+
+
+def _spec_overlaps(left: TargetSpec, right: TargetSpec) -> bool:
+    """Return True when two target specs share any overlapping segment."""
+    for left_segment in left.segments:
+        for right_segment in right.segments:
+            if ranges_overlap(
+                left_segment.start,
+                left_segment.end,
+                right_segment.start,
+                right_segment.end,
+            ):
+                return True
+    return False
+
+
+def _validate_same_source_target_overlap(
+    validator: MappingRangeValidator,
+    issues: list[ValidationIssue],
+    source_descriptor: str,
+    target_descriptor: str,
+    source_range: str,
+    target_range: str,
+    spec: TargetSpec,
+    source_targets: dict[str, list[tuple[str, TargetSpec]]],
+) -> None:
+    """Reject multiple targets with overlapping windows for one source range."""
+    existing = source_targets.setdefault(source_range, [])
+    overlap_with = next(
+        (
+            prior_target_range
+            for prior_target_range, prior_spec in existing
+            if _spec_overlaps(spec, prior_spec)
+        ),
+        None,
+    )
+    if overlap_with is not None:
+        issues.append(
+            validator.issue(
+                "Overlapping target ranges for the same source range",
+                source=source_descriptor,
+                target=target_descriptor,
+                source_range=source_range,
+                target_range=target_range,
+                details={
+                    "source_range": source_range,
+                    "target_range": target_range,
+                    "overlaps_with_target_range": overlap_with,
+                },
+            )
+        )
+        return
+    existing.append((target_range, spec))
+
+
+def _validate_target_spec_shape(
+    validator: MappingRangeValidator,
+    issues: list[ValidationIssue],
+    source_descriptor: str,
+    target_descriptor: str,
+    source_range: str,
+    target_range: str,
+    spec: TargetSpec,
+) -> None:
+    """Reject self-overlapping segments inside a single target spec."""
+    if not has_internal_overlap(spec):
+        return
+
+    sorted_segments = sorted(
+        spec.segments,
+        key=lambda segment: (
+            segment.start,
+            float("inf") if segment.end is None else segment.end,
+        ),
+    )
+    previous = sorted_segments[0]
+    for current in sorted_segments[1:]:
+        if ranges_overlap(previous.start, previous.end, current.start, current.end):
+            issues.append(
+                validator.issue(
+                    "Overlapping target segments within a mapping",
+                    source=source_descriptor,
+                    target=target_descriptor,
+                    source_range=source_range,
+                    target_range=target_range,
+                    details={
+                        "overlaps_with": format_mapping_range(previous),
+                        "segment": format_mapping_range(current),
+                    },
+                )
+            )
+            return
+
+        previous_end = float("inf") if previous.end is None else previous.end
+        current_end = float("inf") if current.end is None else current.end
+        if current_end > previous_end:
+            previous = current
+
+
+def _validate_target_limit(
+    validator: MappingRangeValidator,
+    issues: list[ValidationIssue],
+    source_descriptor: str,
+    target_descriptor: str,
+    source_range: str,
+    spec: TargetSpec,
+    episode_limit: int | None,
+) -> None:
+    """Ensure target ranges do not exceed known episode limits."""
+    if not episode_limit or episode_limit <= 0:
+        return
+
+    for segment in spec.segments:
+        if segment.end is None:
+            if segment.start <= episode_limit:
+                continue
+        elif segment.end <= episode_limit:
+            continue
+
+        formatted = format_mapping_range(segment)
+        issues.append(
+            validator.issue(
+                "Target mapping exceeds available episodes",
+                source=source_descriptor,
+                target=target_descriptor,
+                source_range=source_range,
+                target_range=formatted,
+                details={
+                    "source_range": source_range,
+                    "target_range": formatted,
+                    "episode_limit": episode_limit,
+                },
+            )
+        )
+
+
+def _validate_units(
+    validator: MappingRangeValidator,
+    issues: list[ValidationIssue],
+    source_descriptor: str,
+    target_descriptor: str,
+    source_segment: Any,
+    source_range: str,
+    target_range: str,
+    spec: TargetSpec,
+) -> None:
+    """Ensure target unit count does not exceed the mapped source units."""
+    source_units = source_segment.length
+    if source_units is None:
+        return
+
+    units = target_units(spec)
+    if units is None:
+        return
+
+    if source_units == units:
+        return
+
+    issues.append(
+        validator.issue(
+            "Target segments expand beyond source range units",
+            source=source_descriptor,
+            target=target_descriptor,
+            source_range=source_range,
+            target_range=target_range,
+            details={"source_units": source_units, "target_units": units},
+        )
+    )
+
+
+def _validate_target_scope_overlap(
+    validator: MappingRangeValidator,
+    issues: list[ValidationIssue],
+    source_descriptor: str,
+    target_descriptor: str,
+    target_scope_windows: list[tuple[int, int | None, str, str]],
+) -> None:
+    """Reject overlaps across different source ranges for one target scope."""
+    if len(target_scope_windows) <= 1:
+        return
+
+    target_scope_windows.sort(
+        key=lambda item: (
+            item[0],
+            float("inf") if item[1] is None else item[1],
+        )
+    )
+    previous: tuple[int, int | None, str, str] | None = None
+
+    for start, end, source_range, target_range in target_scope_windows:
+        if previous is not None:
+            prev_start, prev_end, prev_source_range, prev_target_range = previous
+            if source_range != prev_source_range and ranges_overlap(
+                start,
+                end,
+                prev_start,
+                prev_end,
+            ):
+                issues.append(
+                    validator.issue(
+                        "Overlapping target episode ranges for the same target scope",
+                        source=source_descriptor,
+                        target=target_descriptor,
+                        source_range=source_range,
+                        target_range=target_range,
+                        details={
+                            "source_range": source_range,
+                            "target_range": target_range,
+                            "overlaps_with_source_range": prev_source_range,
+                            "overlaps_with_target_range": prev_target_range,
+                        },
+                    )
+                )
+
+        if previous is None:
+            previous = (start, end, source_range, target_range)
+            continue
+
+        previous_end = float("inf") if previous[1] is None else previous[1]
+        current_end = float("inf") if end is None else end
+        if current_end >= previous_end:
+            previous = (start, end, source_range, target_range)
+
+
+def _validate_provider_cross_id_overlap(
+    validator: MappingRangeValidator,
+    issues: list[ValidationIssue],
+    source_descriptor: str,
+    provider_windows: dict[str, list[tuple[int, int | None, str, str, str, str]]],
+) -> None:
+    """Reject source overlaps across different IDs inside the same provider."""
+    for target_provider, items in provider_windows.items():
+        if len(items) <= 1:
+            continue
+
+        items.sort(
+            key=lambda item: (
+                item[0],
+                10**9 if item[1] is None else item[1],
+                provider_scope_sort_key(item[2]),
+                item[4],
+                item[5],
+            )
+        )
+
+        accepted: list[tuple[int, int | None, str, str, str, str]] = []
+        for (
+            start,
+            end,
+            target_descriptor,
+            target_id,
+            source_range,
+            target_range,
+        ) in items:
+            overlap_with = next(
+                (
+                    accepted_item
+                    for accepted_item in accepted
+                    if target_id != accepted_item[3]
+                    and ranges_overlap(
+                        start,
+                        end,
+                        accepted_item[0],
+                        accepted_item[1],
+                    )
+                ),
+                None,
+            )
+            if overlap_with is None:
+                accepted.append(
+                    (
+                        start,
+                        end,
+                        target_descriptor,
+                        target_id,
                         source_range,
                         target_range,
                     )
-                    if parsed_mapping is None:
-                        if not is_valid_target_range(target_range.strip()):
-                            message = "Invalid target range syntax"
-                        else:
-                            message = "Invalid mapping ratio semantics"
-                        issues.append(
-                            self.issue(
-                                message,
-                                source=source_descriptor,
-                                target=target_descriptor,
-                                source_range=source_range,
-                                target_range=target_range,
-                                details={
-                                    "target_range": target_range,
-                                    "error": parse_error,
-                                },
-                            )
-                        )
-                        continue
-
-                    segments = list(parsed_mapping.target_ranges)
-
-                    candidate_bounds = [
-                        (segment.start, segment.end) for segment in segments
-                    ]
-                    existing = source_range_targets.setdefault(source_range, [])
-                    overlap_with = next(
-                        (
-                            prev_target_range
-                            for prev_target_range, prev_bounds in existing
-                            if any(
-                                _ranges_overlap(
-                                    cur_start,
-                                    cur_end,
-                                    prev_start,
-                                    prev_end,
-                                )
-                                for cur_start, cur_end in candidate_bounds
-                                for prev_start, prev_end in prev_bounds
-                            )
-                        ),
-                        None,
-                    )
-                    if overlap_with is not None:
-                        issues.append(
-                            self.issue(
-                                "Overlapping target ranges for the same source range",
-                                source=source_descriptor,
-                                target=target_descriptor,
-                                source_range=source_range,
-                                target_range=target_range,
-                                details={
-                                    "source_range": source_range,
-                                    "target_range": target_range,
-                                    "overlaps_with_target_range": overlap_with,
-                                },
-                            )
-                        )
-                    else:
-                        existing.append((target_range, candidate_bounds))
-
-                    for segment in segments:
-                        target_segments.append(
-                            (
-                                segment.start,
-                                segment.end,
-                                source_range,
-                                target_range,
-                            )
-                        )
-
-                        if limit and limit > 0:
-                            if segment.end is None:
-                                if segment.start > limit:
-                                    issues.append(
-                                        self.issue(
-                                            "Target mapping exceeds available episodes",
-                                            source=source_descriptor,
-                                            target=target_descriptor,
-                                            source_range=source_range,
-                                            target_range=format_mapping_range(segment),
-                                            details={
-                                                "source_range": source_range,
-                                                "target_range": format_mapping_range(
-                                                    segment
-                                                ),
-                                                "episode_limit": limit,
-                                            },
-                                        )
-                                    )
-                            elif segment.end > limit:
-                                issues.append(
-                                    self.issue(
-                                        "Target mapping exceeds available episodes",
-                                        source=source_descriptor,
-                                        target=target_descriptor,
-                                        source_range=source_range,
-                                        target_range=format_mapping_range(segment),
-                                        details={
-                                            "source_range": source_range,
-                                            "target_range": format_mapping_range(
-                                                segment
-                                            ),
-                                            "episode_limit": limit,
-                                        },
-                                    )
-                                )
-
-                    if len(segments) > 1:
-                        segments.sort(
-                            key=lambda item: (
-                                item.start,
-                                float("inf") if item.end is None else item.end,
-                            )
-                        )
-                        prev = segments[0]
-                        for current in segments[1:]:
-                            if _ranges_overlap(
-                                prev.start,
-                                prev.end,
-                                current.start,
-                                current.end,
-                            ):
-                                issues.append(
-                                    self.issue(
-                                        "Overlapping target segments within a mapping",
-                                        source=source_descriptor,
-                                        target=target_descriptor,
-                                        source_range=source_range,
-                                        target_range=target_range,
-                                        details={
-                                            "overlaps_with": format_mapping_range(prev),
-                                            "segment": format_mapping_range(current),
-                                        },
-                                    )
-                                )
-                            prev_end_value = (
-                                float("inf") if prev.end is None else prev.end
-                            )
-                            current_end_value = (
-                                float("inf") if current.end is None else current.end
-                            )
-                            if current_end_value > prev_end_value:
-                                prev = current
-
-                if len(target_segments) > 1:
-                    target_segments.sort(
-                        key=lambda item: (
-                            item[0],
-                            float("inf") if item[1] is None else item[1],
-                        )
-                    )
-                    prev: tuple[int, int | None, str, str] | None = None
-                    for start, end, src_range, tgt_range in target_segments:
-                        if prev is not None:
-                            prev_start, prev_end, prev_src, prev_base = prev
-                            if src_range != prev_src and _ranges_overlap(
-                                start, end, prev_start, prev_end
-                            ):
-                                issues.append(
-                                    self.issue(
-                                        "Overlapping target episode ranges for the "
-                                        "same target scope",
-                                        source=source_descriptor,
-                                        target=target_descriptor,
-                                        source_range=src_range,
-                                        target_range=tgt_range,
-                                        details={
-                                            "source_range": src_range,
-                                            "target_range": tgt_range,
-                                            "overlaps_with_source_range": prev_src,
-                                            "overlaps_with_target_range": prev_base,
-                                        },
-                                    )
-                                )
-                        prev_end_value = (
-                            float("inf")
-                            if prev is None
-                            else (float("inf") if prev[1] is None else prev[1])
-                        )
-                        current_end_value = float("inf") if end is None else end
-                        if prev is None or current_end_value >= prev_end_value:
-                            prev = (start, end, src_range, tgt_range)
-
-            for target_provider, items in provider_source_ranges.items():
-                if len(items) <= 1:
-                    continue
-                items.sort(
-                    key=lambda item: (
-                        item[0],
-                        10**9 if item[1] is None else item[1],
-                        provider_scope_sort_key(item[2]),
-                        item[4],
-                        item[5],
-                    )
                 )
-                accepted: list[tuple[int, int | None, str, str, str, str]] = []
-                for (
-                    start,
-                    end,
-                    target_descriptor,
-                    target_id,
-                    source_range,
-                    target_range,
-                ) in items:
-                    overlap_with = next(
-                        (
-                            accepted_item
-                            for accepted_item in accepted
-                            if target_id != accepted_item[3]
-                            if _ranges_overlap(
-                                start,
-                                end,
-                                accepted_item[0],
-                                accepted_item[1],
-                            )
-                        ),
-                        None,
-                    )
-                    if overlap_with is None:
-                        accepted.append(
-                            (
-                                start,
-                                end,
-                                target_descriptor,
-                                target_id,
-                                source_range,
-                                target_range,
-                            )
-                        )
-                        continue
+                continue
 
-                    (
-                        _,
-                        _,
-                        prev_target,
-                        prev_target_id,
-                        prev_source_range,
-                        prev_target_range,
-                    ) = overlap_with
-                    issues.append(
-                        self.issue(
-                            "Overlapping source episode ranges for the same target "
-                            "provider across IDs",
-                            source=source_descriptor,
-                            target=target_descriptor,
-                            source_range=source_range,
-                            target_range=target_range,
-                            details={
-                                "target_provider": target_provider,
-                                "target_id": target_id,
-                                "overlaps_with_target": prev_target,
-                                "overlaps_with_target_id": prev_target_id,
-                                "overlaps_with_source_range": prev_source_range,
-                                "overlaps_with_target_range": prev_target_range,
-                            },
-                        )
-                    )
-
-        return issues
+            (
+                _,
+                _,
+                previous_target,
+                previous_target_id,
+                previous_source_range,
+                previous_target_range,
+            ) = overlap_with
+            issues.append(
+                validator.issue(
+                    "Overlapping source episode ranges for the same target provider "
+                    "across IDs",
+                    source=source_descriptor,
+                    target=target_descriptor,
+                    source_range=source_range,
+                    target_range=target_range,
+                    details={
+                        "target_provider": target_provider,
+                        "target_id": target_id,
+                        "overlaps_with_target": previous_target,
+                        "overlaps_with_target_id": previous_target_id,
+                        "overlaps_with_source_range": previous_source_range,
+                        "overlaps_with_target_range": previous_target_range,
+                    },
+                )
+            )
