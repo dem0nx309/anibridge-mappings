@@ -3,4 +3,5 @@
   "name": "anibridge-mappings",
   "compatibility_date": "2025-08-03",
   "main": "./src/index.tsx",
+  "vars": { "SKIP_DEPENDENCY_INSTALL": 1, "NODE_VERSION": "25" },
 }
