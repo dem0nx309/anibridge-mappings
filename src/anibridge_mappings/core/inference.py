@@ -9,107 +9,105 @@ from anibridge_mappings.core.meta import MetaStore, SourceMeta, SourceType
 
 log = getLogger(__name__)
 
-MetaKey = tuple[SourceType | None, int | None, int | None, int | None]
-
 
 def infer_episode_mappings(
     meta_store: MetaStore,
     id_graph: IdMappingGraph,
 ) -> EpisodeMappingGraph:
-    """Infer episode mappings when metadata matches exactly within ID links.
-
-    Args:
-        meta_store (MetaStore): Metadata store providing per-entry metadata.
-        id_graph (IdMappingGraph): ID mapping graph used to discover linked IDs.
-
-    Returns:
-        EpisodeMappingGraph: Inferred episode mapping edges.
-    """
+    """Infer episode mappings when metadata align."""
     inferred = EpisodeMappingGraph()
-    components = list(_iter_components(id_graph))
-    if not components:
-        return inferred
 
-    for component in components:
-        # Gather all meta for nodes in the component
-        meta_nodes: list[tuple[SourceMeta, IdNode]] = []
-        for provider, entry_id, scope in component:
-            meta = meta_store.peek(provider, entry_id, scope)
-            if meta is None:
-                continue
-            if meta.episodes is None or meta.episodes <= 0:
-                continue
-            meta_nodes.append((meta, (provider, entry_id, scope)))
+    for component in _iter_components(id_graph):
+        candidates = _component_meta_candidates(meta_store, component)
+        if len(candidates) < 2:
+            continue
 
-        # Try all pairs for matching
-        for (meta1, node1), (meta2, node2) in combinations(meta_nodes, 2):
-            if _meta_match(meta1, meta2):
-                episode_range = _range_from_meta_key(_meta_key(meta1))
-                if episode_range is None:
-                    continue
-                left_node = (*node1, episode_range)
-                right_node = (*node2, episode_range)
-                inferred.add_edge(left_node, right_node)
+        for (meta_left, node_left), (meta_right, node_right) in combinations(
+            candidates,
+            2,
+        ):
+            if not _meta_match(meta_left, meta_right):
+                continue
+
+            episode_range = _episode_range(meta_left)
+            if episode_range is None:
+                continue
+
+            inferred.add_edge((*node_left, episode_range), (*node_right, episode_range))
 
     if inferred.node_count():
         log.info(
-            "Inferred %d episode mapping node(s) from metadata", inferred.node_count()
+            "Inferred %d episode mapping node(s) from metadata",
+            inferred.node_count(),
         )
 
     return inferred
 
 
-def _meta_key(meta: SourceMeta) -> MetaKey:
-    """Build a hashable metadata key from a SourceMeta instance."""
-    return (meta.type, meta.episodes, meta.duration, meta.start_year)
+def _component_meta_candidates(
+    meta_store: MetaStore,
+    component: set[IdNode],
+) -> list[tuple[SourceMeta, IdNode]]:
+    """Find all nodes in the component with valid metadata for episode inference."""
+    candidates: list[tuple[SourceMeta, IdNode]] = []
+    for node in component:
+        meta = meta_store.peek(*node)
+        if meta is None or meta.episodes is None or meta.episodes <= 0:
+            continue
+        candidates.append((meta, node))
+    return candidates
 
 
-def _meta_match(meta1: SourceMeta, meta2: SourceMeta) -> bool:
-    """Check if two SourceMeta objects match under our inference rules."""
-    # Type and episodes must match exactly
-    if meta1.type != meta2.type:
-        return False
-    if meta1.episodes != meta2.episodes:
+def _meta_match(left: SourceMeta, right: SourceMeta) -> bool:
+    if left.type != right.type or left.episodes != right.episodes:
         return False
 
-    y1, y2 = meta1.start_year, meta2.start_year
-    if meta1.type == SourceType.MOVIE and (not y1 or not y2 or y1 != y2):
+    if not _year_match(left, right):
         return False
-    if meta1.type == SourceType.TV and (y1 and y2) and (y1 != y2):
-        return False
+    return _duration_match(left, right)
 
-    d1, d2 = meta1.duration, meta2.duration
-    relative_d = _relative_delta(d1, d2)
-    if meta1.type == SourceType.MOVIE and (not d1 or not d2 or relative_d > 0.1):
-        return False
-    if meta1.type == SourceType.TV and (d1 and d2) and (relative_d > 0.1):  # noqa: SIM103
-        return False
 
+def _year_match(left: SourceMeta, right: SourceMeta) -> bool:
+    """Check if years match with some tolerance."""
+    left_year, right_year = left.start_year, right.start_year
+    if left.type == SourceType.MOVIE:
+        return bool(left_year and right_year and left_year == right_year)
+    if left_year and right_year:
+        return left_year == right_year
     return True
 
 
-def _relative_delta(a: int | None, b: int | None) -> float:
-    """Calculate relative delta between two integer values."""
-    if a is None or b is None:
-        return -1.0
-    if a == 0 and b == 0:
-        return 0.0
+def _duration_match(left: SourceMeta, right: SourceMeta) -> bool:
+    """Check if durations match with some tolerance."""
+    left_duration, right_duration = left.duration, right.duration
+    if left.type == SourceType.MOVIE:
+        if not left_duration or not right_duration:
+            return False
+        return _relative_delta(left_duration, right_duration) <= 0.1
+
+    if left_duration and right_duration:
+        return _relative_delta(left_duration, right_duration) <= 0.1
+    return True
+
+
+def _relative_delta(a: int, b: int) -> float:
+    """Calculate relative delta between two values."""
     denominator = max(abs(a), abs(b))
     if denominator == 0:
         return 0.0
     return abs(a - b) / denominator
 
 
-def _range_from_meta_key(meta_key: MetaKey) -> str | None:
-    """Convert a metadata key to a normalized episode range string."""
-    _meta_type, episodes, _duration, _start_year = meta_key
+def _episode_range(meta: SourceMeta) -> str | None:
+    """Format episode range from metadata."""
+    episodes = meta.episodes
     if episodes is None or episodes <= 0:
         return None
     return "1" if episodes == 1 else f"1-{episodes}"
 
 
 def _iter_components(id_graph: IdMappingGraph) -> Iterable[set[IdNode]]:
-    """Yield unique connected components from an ID graph."""
+    """Yield connected components of the ID mapping graph."""
     visited: set[IdNode] = set()
     for node in id_graph.nodes():
         if node in visited:
