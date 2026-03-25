@@ -1,18 +1,90 @@
 import { swaggerUI } from "@hono/swagger-ui";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { getMappings } from "./server/mappings";
 
 type Bindings = { ASSETS: { fetch: (request: Request) => Promise<Response> } };
 
 const app = new OpenAPIHono<{ Bindings: Bindings }>({ strict: false });
 
 const PROVENANCE_URL =
-  "https://github.com/anibridge/anibridge-mappings/releases/latest/download/provenance.json";
+  "https://github.com/anibridge/anibridge-mappings/releases/latest/download/provenance.zip";
+const LOCAL_PROVENANCE_FS_PATH = `/@fs${
+  new URL("../../data/out/provenance.zip", import.meta.url).pathname
+}`;
 
-app.get("/data/provenance.json", async (c) => {
+type MappingsPayload = {
+  [key: string]: { [key: string]: { [key: string]: string } };
+};
+
+const MAPPINGS_URL =
+  "https://github.com/anibridge/anibridge-mappings/releases/latest/download/mappings.json";
+const LOCAL_MAPPINGS_FS_PATH = `/@fs${
+  new URL("../../data/out/mappings.json", import.meta.url).pathname
+}`;
+
+let mappingsPromise: Promise<MappingsPayload> | null = null;
+
+const getMappings = async (requestUrl?: string): Promise<MappingsPayload> => {
+  const EDGE_CACHE_TTL = 6 * 60 * 60;
+
+  if (!mappingsPromise) {
+    mappingsPromise = (async () => {
+      if (import.meta.env.DEV) {
+        if (!requestUrl) {
+          throw new Error(
+            "requestUrl is required in DEV to resolve local mappings.",
+          );
+        }
+        const localUrl = new URL(LOCAL_MAPPINGS_FS_PATH, requestUrl);
+        const res = await fetch(localUrl.toString(), {
+          headers: { Accept: "application/json" },
+        });
+        if (!res.ok) {
+          throw new Error(
+            `Failed to fetch local mappings: ${res.status} ${res.statusText}`,
+          );
+        }
+        return (await res.json()) as MappingsPayload;
+      }
+
+      const init: any = {
+        headers: { Accept: "application/json" },
+        cf: { cacheTtl: EDGE_CACHE_TTL, cacheEverything: true },
+      };
+      const res = await fetch(MAPPINGS_URL, init);
+      if (!res.ok) {
+        throw new Error(
+          `Failed to fetch mappings: ${res.status} ${res.statusText}`,
+        );
+      }
+      return (await res.json()) as MappingsPayload;
+    })().catch((err) => {
+      mappingsPromise = null;
+      throw err;
+    });
+  }
+
+  return mappingsPromise;
+};
+
+app.get("/data/provenance.zip", async (c) => {
   try {
+    if (import.meta.env.DEV) {
+      const localUrl = new URL(LOCAL_PROVENANCE_FS_PATH, c.req.url);
+      const upstream = await fetch(localUrl.toString(), {
+        headers: { Accept: "application/zip" },
+      });
+      const headers = new Headers(upstream.headers);
+      headers.set("Access-Control-Allow-Origin", "*");
+      headers.set("Cache-Control", "no-store");
+      headers.set("Vary", "Origin");
+      return new Response(await upstream.arrayBuffer(), {
+        status: upstream.status,
+        headers,
+      });
+    }
+
     const upstream = await fetch(PROVENANCE_URL, {
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/zip" },
     });
     const headers = new Headers(upstream.headers);
     headers.set("Access-Control-Allow-Origin", "*");
@@ -23,7 +95,7 @@ app.get("/data/provenance.json", async (c) => {
       headers,
     });
   } catch (error) {
-    console.error("Failed to proxy provenance.json", error);
+    console.error("Failed to proxy provenance.zip", error);
     return c.json({ error: "Failed to fetch provenance data." }, 502, {
       "Access-Control-Allow-Origin": "*",
     });
@@ -74,10 +146,10 @@ const mappingsRoute = createRoute({
 type SourceIndex = Map<string, Map<string, Map<string, string>>>;
 let sourceIndexPromise: Promise<SourceIndex> | null = null;
 
-const getSourceIndex = async () => {
+const getSourceIndex = async (requestUrl: string) => {
   if (!sourceIndexPromise) {
     sourceIndexPromise = (async () => {
-      const mappings = await getMappings();
+      const mappings = await getMappings(requestUrl);
       const index: SourceIndex = new Map();
 
       for (const source of Object.keys(mappings)) {
@@ -115,6 +187,7 @@ const getSourceIndex = async () => {
 };
 
 app.openapi(mappingsRoute, async (c) => {
+  const requestUrl = c.req.url;
   const query = c.req.query();
   const providerQuery = normalizeText(query.provider);
   const idQuery = normalizeText(query.id);
@@ -122,8 +195,8 @@ app.openapi(mappingsRoute, async (c) => {
   const limit = Math.max(1, Math.min(toNumber(query.limit, 50), 1000));
   const offset = Math.max(0, toNumber(query.offset, 0));
 
-  const mappings = await getMappings();
-  const index = await getSourceIndex();
+  const mappings = await getMappings(requestUrl);
+  const index = await getSourceIndex(requestUrl);
   const response: Record<string, Record<string, Record<string, string>>> = {};
   let total = 0;
   let added = 0;
@@ -197,13 +270,11 @@ app.doc31("/openapi.json", {
 
 app.get(
   "/docs",
-  swaggerUI({
-    url: "/openapi.json",
-    title: "AniBridge Mappings API",
-    version: "3.0.0",
-  }),
+  swaggerUI({ url: "/openapi.json", title: "AniBridge Mappings API" }),
 );
 
-app.get("*", (c) => c.env.ASSETS.fetch(c.req.raw));
+if (!import.meta.env.DEV) {
+  app.get("*", (c) => c.env.ASSETS.fetch(c.req.raw));
+}
 
 export default app;
