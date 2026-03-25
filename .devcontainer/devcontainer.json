@@ -17,7 +17,8 @@
         "ms-python.python",
         "redhat.vscode-yaml",
         "yzhang.markdown-all-in-one"
-      ]
+      ],
+      "settings": { "python-envs.terminal.autoActivationType": "shellStartup" }
     }
   },
   "postCreateCommand": "uv sync --all-packages ; (cd app && pnpm i)",
