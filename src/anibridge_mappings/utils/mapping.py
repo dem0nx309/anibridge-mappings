@@ -4,14 +4,19 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
-from anibridge.utils.mappings import (
-    AnibridgeMapping,
-    AnibridgeMappingRange,
-    is_valid_target_range,
-    parse_mapping_descriptor,
-)
+from anibridge.utils.mappings import parse_mapping_descriptor
 
 from anibridge_mappings.core.graph import EpisodeMappingGraph
+from anibridge_mappings.core.range_specs import (
+    TargetSpec,
+    format_range,
+    format_target_spec,
+    merge_segments,
+    normalize_reversed_pair,
+    parse_source_segment,
+    parse_target_spec,
+    range_bounds,
+)
 
 SourceNode = tuple[str, str, str | None]
 TargetNode = tuple[str, str, str | None]
@@ -22,118 +27,33 @@ SourceTargetMap = dict[
 
 
 def parse_descriptor(descriptor: str) -> tuple[str, str, str | None]:
-    """Parse `provider:id[:scope]` strings back into tuple form.
-
-    Args:
-        descriptor (str): Provider descriptor string.
-
-    Returns:
-        tuple[str, str, str | None]: Provider, entry ID, and optional scope.
-    """
+    """Parse provider descriptor strings into tuple form."""
     return parse_mapping_descriptor(descriptor)
 
 
 def normalize_episode_key(value: str | None) -> str | None:
-    """Normalize an episode key to digits or `start-end` ranges.
-
-    Args:
-        value (str | None): Raw episode label.
-
-    Returns:
-        str | None: Normalized episode key or `None` if invalid.
-    """
-    if not value:
+    """Normalize one episode key string."""
+    if value is None:
         return None
-    trimmed = value.strip()
-    if not trimmed:
-        return None
-    return trimmed or None
-
-
-def _normalize_reversed_ratio(
-    source_range: str,
-    target_range: str,
-) -> tuple[str, str]:
-    """Move source ratio onto target as a negative trailing ratio.
-
-    Reversed edges can surface ranges like `1|2 -> 1-2`, but source ranges
-    cannot carry ratios in the emitted schema. Convert that to
-    `1 -> 1-2|-2`.
-    """
-    normalized_source = source_range.strip()
-    normalized_target = target_range.strip()
-
-    if "|" not in normalized_source or "," in normalized_source:
-        return normalized_source, normalized_target
-    if not is_valid_target_range(normalized_source):
-        return normalized_source, normalized_target
-
-    base_source, ratio_raw = normalized_source.rsplit("|", 1)
-    try:
-        ratio = int(ratio_raw)
-    except ValueError:
-        return normalized_source, normalized_target
-    if ratio == 0:
-        return normalized_source, normalized_target
-    if "|" in normalized_target:
-        # Keep existing target ratio when present
-        return base_source, normalized_target
-
-    moved_ratio = -abs(ratio)
-    return base_source, f"{normalized_target}|{moved_ratio}"
+    normalized = value.strip()
+    return normalized or None
 
 
 def parse_range_bounds(range_key: str) -> tuple[int, int | None] | None:
-    """Return inclusive (start, end) bounds for a normalized range key.
-
-    Args:
-        range_key (str): Normalized range key.
-
-    Returns:
-        tuple[int, int | None] | None: Parsed bounds or `None` if invalid.
-    """
-    if not range_key:
-        return None
-    normalized = range_key.strip()
-    if not normalized:
-        return None
-
-    if "," in normalized:
-        return None
-
-    base = normalized
-    if "|" in normalized:
-        if not is_valid_target_range(normalized):
-            return None
-        base, _ratio = normalized.rsplit("|", 1)
-
-    if "," in base:
-        return None
-
-    try:
-        parsed = AnibridgeMappingRange.parse(base)
-    except ValueError:
-        return None
-
-    return (parsed.start, parsed.end)
+    """Return inclusive bounds for a single range expression."""
+    return range_bounds(range_key)
 
 
 def build_source_target_map(graph: EpisodeMappingGraph) -> SourceTargetMap:
-    """Create a mapping of source scopes to their target range references.
-
-    Args:
-        graph (EpisodeMappingGraph): Episode mapping graph.
-
-    Returns:
-        SourceTargetMap: Mapping of sources to target range specs.
-    """
+    """Create a mapping of source scopes to their target range references."""
     source_mappings: SourceTargetMap = {}
+
     for node in sorted(
         graph.nodes(),
         key=lambda n: (n[0], n[1], "" if n[2] is None else n[2], n[3]),
     ):
-        provider, entry_id, scope, source_range_raw = node
-        source_range = normalize_episode_key(source_range_raw)
+        provider, entry_id, scope, source_raw = node
+        source_range = normalize_episode_key(source_raw)
         if source_range is None:
             continue
 
@@ -144,7 +64,7 @@ def build_source_target_map(graph: EpisodeMappingGraph) -> SourceTargetMap:
             if neighbor == node:
                 continue
 
-            target_provider, target_entry, target_scope, target_range_raw = neighbor
+            target_provider, target_entry, target_scope, target_raw = neighbor
             if (
                 provider == target_provider
                 and entry_id == target_entry
@@ -152,400 +72,200 @@ def build_source_target_map(graph: EpisodeMappingGraph) -> SourceTargetMap:
             ):
                 continue
 
-            target_range = normalize_episode_key(target_range_raw)
+            target_range = normalize_episode_key(target_raw)
             if target_range is None:
                 continue
 
-            source_range, target_range = _normalize_reversed_ratio(
-                source_range,
-                target_range,
-            )
+            normalized_pairs = normalize_reversed_pair(source_range, target_range)
+            if not normalized_pairs:
+                continue
 
             source_bucket = source_mappings.setdefault((provider, entry_id, scope), {})
             target_bucket = source_bucket.setdefault(
                 (target_provider, target_entry, target_scope),
                 {},
             )
-            target_bucket.setdefault(source_range, set()).add(target_range)
+            for normalized_source, normalized_target in normalized_pairs:
+                target_bucket.setdefault(
+                    normalized_source,
+                    set(),
+                ).add(normalized_target)
 
     return source_mappings
 
 
 def collapse_source_mappings(source_map: Mapping[str, set[str]]) -> dict[str, str]:
-    """Collapse raw source-to-target mappings into schema-friendly specs.
-
-    Args:
-        source_map (Mapping[str, set[str]]): Raw source-to-target map.
-
-    Returns:
-        dict[str, str]: Collapsed source mappings suitable for schema output.
-    """
-    numeric_entries: list[tuple[tuple[int, int], set[str]]] = []
-    special_entries: dict[str, set[str]] = {}
+    """Collapse raw source-to-target mappings into schema-friendly specs."""
+    collapsed: dict[str, str] = {}
 
     for source_range, target_ranges in source_map.items():
         normalized_source = source_range.strip()
-        bounds = parse_range_bounds(normalized_source)
-        if bounds is not None:
-            start, end = bounds
-            if end is not None:
-                target_bounds = [parse_range_bounds(value) for value in target_ranges]
-                all_numeric = all(
-                    bound is not None and bound[1] is not None
-                    for bound in target_bounds
-                )
-                source_len = end - start + 1
-                numeric_targets = _expand_numeric_targets(target_ranges)
-                if (
-                    all_numeric
-                    and numeric_targets
-                    and len(numeric_targets) == source_len
-                ):
-                    numeric_entries.append(((start, end), target_ranges))
-                else:
-                    special_entries[normalized_source] = target_ranges
+        if parse_source_segment(normalized_source) is None:
+            continue
+
+        specs: list[TargetSpec] = []
+        raw_targets: list[str] = []
+        for value in sorted({item.strip() for item in target_ranges if item.strip()}):
+            spec = parse_target_spec(value)
+            if spec is None:
+                raw_targets.append(value)
                 continue
-        special_entries[normalized_source] = target_ranges
+            specs.append(spec)
 
-    result: dict[str, str] = {}
-    if numeric_entries:
-        result.update(_collapse_numeric_entries(numeric_entries))
-
-    for source_range, target_ranges in special_entries.items():
-        spec = _format_special_targets(target_ranges)
-        if spec:
-            result[source_range] = spec
-
-    # Post-process to merge adjacent numeric source keys that have identical
-    # target specs (e.g., "1": "x", "2": "x" -> "1-2": "x"). This
-    # reduces excessively fragmented output when contiguous sources map to
-    # the same targets.
-    return _merge_adjacent_numeric_keys(result)
-
-
-def _collapse_numeric_entries(
-    entries: list[tuple[tuple[int, int], set[str]]],
-) -> dict[str, str]:
-    """Collapse numeric-only source mappings into schema-friendly specs."""
-    per_source: dict[int, list[int]] = {}
-    for (source_start, source_end), target_values in entries:
-        source_values = list(range(source_start, source_end + 1))
-        if not source_values:
+        if raw_targets:
+            collapsed[normalized_source] = ",".join(raw_targets)
             continue
-        numeric_targets = _expand_numeric_targets(target_values)
-        if not numeric_targets:
+        if not specs:
             continue
 
-        if len(source_values) == 1:
-            per_source[source_values[0]] = numeric_targets
+        ratios = {spec.ratio for spec in specs}
+        if len(ratios) > 1:
+            # If there are multiple ratios, we can't merge specs, so we choose the
+            # longest one (for determinism) and discard the rest since they conflict.
+            chosen = max(specs, key=lambda spec: _bounded_length(spec.segments))
+            collapsed[normalized_source] = format_target_spec(chosen)
             continue
 
-        if len(numeric_targets) != len(source_values):
-            continue
-
-        for idx, source_value in enumerate(source_values):
-            per_source[source_value] = [numeric_targets[idx]]
-
-    if not per_source:
-        return {}
-
-    contiguous_sources = {
-        source: values
-        for source, values in per_source.items()
-        if _is_contiguous(values)
-    }
-    non_contiguous_sources = {
-        source: values
-        for source, values in per_source.items()
-        if not _is_contiguous(values)
-    }
-
-    mapping: dict[str, str] = {}
-    for source_value, targets in non_contiguous_sources.items():
-        mapping[str(source_value)] = ",".join(_compress_ranges(targets))
-
-    if contiguous_sources:
-        units = _build_units(contiguous_sources)
-        segments = _merge_units(units)
-        for segment in segments:
-            source_start = segment[0]["source_start"]
-            source_end = segment[-1]["source_end"]
-            source_len = sum(unit["source_len"] for unit in segment)
-            target_start = segment[0]["target_start"]
-            target_end = segment[-1]["target_end"]
-            target_len = target_end - target_start + 1
-            ratio = _compute_ratio(source_len, target_len)
-
-            source_key = _format_range(source_start, source_end)
-            target_value = _format_target_with_ratio(target_start, target_end, ratio)
-            mapping[source_key] = target_value
-
-    return mapping
-
-
-def _build_units(contiguous_sources: dict[int, list[int]]) -> list[dict[str, int]]:
-    """Build contiguous source units grouped by identical targets."""
-    sorted_sources = sorted(contiguous_sources)
-    units: list[dict[str, int]] = []
-
-    idx = 0
-    while idx < len(sorted_sources):
-        source = sorted_sources[idx]
-        targets = contiguous_sources[source]
-        j = idx + 1
-        while (
-            j < len(sorted_sources)
-            and sorted_sources[j] == sorted_sources[j - 1] + 1
-            and contiguous_sources[sorted_sources[j]] == targets
-        ):
-            j += 1
-
-        unit_sources = sorted_sources[idx:j]
-        source_len = len(unit_sources)
-        target_len = len(targets)
-        units.append(
-            {
-                "source_start": unit_sources[0],
-                "source_end": unit_sources[-1],
-                "source_len": source_len,
-                "target_start": targets[0],
-                "target_end": targets[-1],
-                "target_len": target_len,
-                "ratio_sign": 1 if target_len >= source_len else -1,
-            }
-        )
-        idx = j
-
-    return units
-
-
-def _merge_units(units: list[dict[str, int]]) -> list[list[dict[str, int]]]:
-    """Merge adjacent units into compatible segments."""
-    merged: list[list[dict[str, int]]] = []
-    idx = 0
-    while idx < len(units):
-        segment = [units[idx]]
-        idx += 1
-        while idx < len(units) and _can_merge_unit(segment[-1], units[idx]):
-            segment.append(units[idx])
-            idx += 1
-        merged.append(segment)
-    return merged
-
-
-def _can_merge_unit(prev: dict[str, int], nxt: dict[str, int]) -> bool:
-    """Return True if two units can be merged into one segment."""
-    if nxt["source_start"] != prev["source_end"] + 1:
-        return False
-    if nxt["ratio_sign"] != prev["ratio_sign"]:
-        return False
-
-    if prev["ratio_sign"] == 1:
-        return (
-            nxt["target_len"] == prev["target_len"]
-            and nxt["target_start"] == prev["target_end"] + 1
+        ratio = next(iter(ratios))
+        merged = merge_segments([seg for spec in specs for seg in spec.segments])
+        collapsed[normalized_source] = format_target_spec(
+            TargetSpec(segments=tuple(merged), ratio=ratio)
         )
 
-    return (
-        nxt["target_len"] == prev["target_len"]
-        and nxt["source_len"] == prev["source_len"]
-        and nxt["target_start"] == prev["target_start"] + prev["target_len"]
-    )
+    return _merge_adjacent_linear_keys(_merge_adjacent_numeric_keys(collapsed))
 
 
-def _compute_ratio(source_len: int, target_len: int) -> int | None:
-    """Compute an integer ratio between source and target lengths."""
-    if target_len == source_len:
-        return None
-    larger, smaller, sign = (
-        (target_len, source_len, -1)
-        if target_len > source_len
-        else (source_len, target_len, 1)
-    )
-    if smaller == 0 or larger % smaller != 0:
-        return None
-    return sign * (larger // smaller)
+def _bounded_length(segments: tuple[Any, ...]) -> int:
+    total = 0
+    for segment in segments:
+        length = segment.length
+        if length is None:
+            return 10**9
+        total += length
+    return total
 
 
-def _format_special_targets(targets: set[str]) -> str:
-    """Format target ranges for non-numeric source keys."""
-    numeric = sorted({int(value) for value in targets if value.isdigit()})
-    if numeric:
-        return ",".join(_compress_ranges(numeric))
-
-    return ",".join(sorted(targets))
-
-
-def _compress_ranges(values: list[int]) -> list[str]:
-    """Compress sorted integers into range strings."""
-    if not values:
-        return []
-    ranges: list[str] = []
-    start = prev = values[0]
-
-    for current in values[1:]:
-        if current == prev + 1:
-            prev = current
-            continue
-        ranges.append(_format_range(start, prev))
-        start = prev = current
-
-    ranges.append(_format_range(start, prev))
-    return ranges
-
-
-def _format_range(start: int, end: int) -> str:
-    """Format a numeric range label."""
-    if start == end:
-        return str(start)
-    return f"{start}-{end}"
-
-
-def _format_target_with_ratio(start: int, end: int, ratio: int | None) -> str:
-    """Format a target range with an optional ratio suffix."""
-    base = _format_range(start, end)
-    if ratio is None or ratio == 1:
-        return base
-    return f"{base}|{ratio}"
-
-
-def _is_contiguous(values: list[int]) -> bool:
-    """Return True if a list of integers is strictly contiguous."""
-    return all(values[idx] == values[idx - 1] + 1 for idx in range(1, len(values)))
-
-
-def _expand_numeric_targets(values: set[str]) -> list[int]:
-    """Expand numeric target range strings into integers."""
-    numbers: set[int] = set()
-    for value in values:
-        normalized = value.strip()
-        if not normalized:
-            continue
-        if not is_valid_target_range(normalized):
-            continue
-
-        try:
-            parsed_mapping = AnibridgeMapping.parse("1", normalized)
-        except ValueError:
-            # Parsing with a fixed source can fail due ratio arithmetic; fall
-            # back to parsing each target segment shape.
-            ranges_part = (
-                normalized.rsplit("|", 1)[0] if "|" in normalized else normalized
-            )
-            target_ranges: list[AnibridgeMappingRange] = []
-            for part in ranges_part.split(","):
-                segment = part.strip()
-                if not segment:
-                    continue
-                try:
-                    target_ranges.append(AnibridgeMappingRange.parse(segment))
-                except ValueError:
-                    target_ranges = []
-                    break
-            if not target_ranges:
-                continue
-        else:
-            target_ranges = list(parsed_mapping.target_ranges)
-
-        for segment in target_ranges:
-            if segment.end is None:
-                continue
-            numbers.update(range(segment.start, segment.end + 1))
-    return sorted(numbers)
-
-
-def _parse_source_key(key: str) -> tuple[int, int] | None:
-    """Return (start, end) for numeric source key or None for non-numeric."""
-    if "|" in key or "," in key:
-        return None
+def _source_bounds(key: str) -> tuple[int, int] | None:
+    """Return inclusive start and end bounds for a source key."""
     bounds = parse_range_bounds(key)
     if bounds is None or bounds[1] is None:
         return None
     start, end = bounds
     if end is None:
         return None
-    return (start, end)
-
-
-def _format_source_key(start: int, end: int) -> str:
-    """Format a source key from numeric bounds."""
-    return str(start) if start == end else f"{start}-{end}"
+    return start, end
 
 
 def _merge_adjacent_numeric_keys(mapping: dict[str, str]) -> dict[str, str]:
-    """Aggressively merge numeric source keys."""
-    # Separate numeric and non-numeric entries
-    numeric_items: list[tuple[int, int, str]] = []
+    """Merge adjacent numeric source keys that share identical target specs."""
+    numeric: list[tuple[int, int, str]] = []
     others: dict[str, str] = {}
-    for k, v in mapping.items():
-        bounds = _parse_source_key(k)
+
+    for key, value in mapping.items():
+        bounds = _source_bounds(key)
         if bounds is None:
-            others[k] = v
+            others[key] = value
             continue
-        numeric_items.append((bounds[0], bounds[1], v))
+        numeric.append((bounds[0], bounds[1], value))
 
-    if not numeric_items:
-        return {**mapping}
+    if not numeric:
+        return dict(mapping)
 
-    # Expand numeric_items into per-episode rows
-    episodes: list[tuple[int, str, set[int]]] = []
-    for start, end, val in sorted(numeric_items, key=lambda t: t[0]):
-        for ep in range(start, end + 1):
-            pieces = {p.strip() for p in val.split(",") if p.strip()}
-            expanded = set(_expand_numeric_targets(pieces))
-            episodes.append((ep, val, expanded))
+    numeric.sort(key=lambda item: (item[0], item[1], item[2]))
+    merged: dict[str, str] = {}
+    run_start, run_end, run_value = numeric[0]
 
-    n = len(episodes)
-    idx = 0
-    out_entries: list[tuple[int, int, str]] = []
+    for start, end, value in numeric[1:]:
+        if value == run_value and start == run_end + 1:
+            run_end = end
+            continue
+        merged[format_range(run_start, run_end)] = run_value
+        run_start, run_end, run_value = start, end, value
 
-    while idx < n:
-        # Try to find the largest j >= idx such that episodes[idx..j] form a
-        # contiguous source run and the union of their expanded targets is a
-        # contiguous range with size == number of source episodes in the run.
-        union_set: set[int] = set()
-        found = False
-        for j in range(idx, n):
-            # ensure sources are contiguous numerically
-            if j > idx and episodes[j][0] != episodes[j - 1][0] + 1:
-                break
-            union_set |= episodes[j][2]
-            if not union_set:
-                continue
-            umin = min(union_set)
-            umax = max(union_set)
-            if (umax - umin + 1) == len(union_set) and len(union_set) == (j - idx + 1):
-                # successful aggressive collapse for this run
-                out_entries.append(
-                    (episodes[idx][0], episodes[j][0], _format_source_key(umin, umax))
-                )
-                idx = j + 1
-                found = True
-                break
+    merged[format_range(run_start, run_end)] = run_value
+    merged.update(others)
+    return merged
 
-        if found:
+
+def _merge_adjacent_linear_keys(mapping: dict[str, str]) -> dict[str, str]:
+    """Merge contiguous source ranges when target ranges advance linearly too."""
+    linear_items: list[tuple[int, int, int, int, int | None]] = []
+    passthrough: dict[str, str] = {}
+
+    for source_key, target_value in mapping.items():
+        source_bounds = _source_bounds(source_key)
+        if source_bounds is None:
+            passthrough[source_key] = target_value
             continue
 
-        # Fallback: merge consecutive episodes that have identical formatted
-        # target specs.
-        cur_ep, cur_val, _ = episodes[idx]
-        run_start = cur_ep
-        run_end = cur_ep
-        k = idx + 1
-        while k < n and episodes[k][0] == run_end + 1 and episodes[k][1] == cur_val:
-            run_end = episodes[k][0]
-            k += 1
-        out_entries.append((run_start, run_end, cur_val))
-        idx = k
+        target_spec = parse_target_spec(target_value)
+        if target_spec is None or len(target_spec.segments) != 1:
+            passthrough[source_key] = target_value
+            continue
 
-    # Build output mapping from out_entries
-    out: dict[str, str] = {}
-    for s, e, v in out_entries:
-        out[_format_source_key(s, e)] = v
+        segment = target_spec.segments[0]
+        if segment.end is None:
+            passthrough[source_key] = target_value
+            continue
 
-    # Append non-numeric keys afterwards
-    out.update(others)
-    return out
+        linear_items.append(
+            (
+                source_bounds[0],
+                source_bounds[1],
+                segment.start,
+                segment.end,
+                target_spec.ratio,
+            )
+        )
+
+    if not linear_items:
+        return dict(mapping)
+
+    linear_items.sort(key=lambda item: (item[0], item[1], item[2], item[3]))
+    merged: dict[str, str] = {}
+
+    run_source_start, run_source_end, run_target_start, run_target_end, run_ratio = (
+        linear_items[0]
+    )
+    run_offset = run_target_start - run_source_start
+
+    for source_start, source_end, target_start, target_end, ratio in linear_items[1:]:
+        can_merge = (
+            ratio == run_ratio
+            and source_start == run_source_end + 1
+            and target_start == run_target_end + 1
+            and (target_start - source_start) == run_offset
+        )
+        if can_merge:
+            run_source_end = source_end
+            run_target_end = target_end
+            continue
+
+        merged[format_range(run_source_start, run_source_end)] = _format_target_value(
+            run_target_start,
+            run_target_end,
+            run_ratio,
+        )
+        run_source_start = source_start
+        run_source_end = source_end
+        run_target_start = target_start
+        run_target_end = target_end
+        run_ratio = ratio
+        run_offset = run_target_start - run_source_start
+
+    merged[format_range(run_source_start, run_source_end)] = _format_target_value(
+        run_target_start,
+        run_target_end,
+        run_ratio,
+    )
+    merged.update(passthrough)
+    return merged
+
+
+def _format_target_value(start: int, end: int, ratio: int | None) -> str:
+    """Output a string representation of a target range."""
+    base = format_range(start, end)
+    return base if ratio is None else f"{base}|{ratio}"
 
 
 def provider_scope_sort_key(k: str):
@@ -566,6 +286,7 @@ def provider_scope_sort_key(k: str):
     id_str = match.group("id")
     scope = match.group("scope")
     id_key = (0, int(id_str)) if id_str.isdigit() else (1, id_str)
+
     if scope is None:
         scope_key = (0, "")
     else:
@@ -576,46 +297,43 @@ def provider_scope_sort_key(k: str):
         else:
             scope_match = re.match(r"^s([0-9]+)$", scope)
             scope_key = (2, int(scope_match.group(1))) if scope_match else (3, scope)
-    return (1, provider, id_key, scope_key, 1 if forced else 0)
+
     return (1, provider, id_key, scope_key, 1 if forced else 0)
 
 
 def ordered_payload(d: dict[str, Any]) -> dict[str, Any]:
-    """Return a new dict with ordered keys for stable serialization.
-
-    Args:
-        d (dict[str, Any]): Mapping payload.
-
-    Returns:
-        dict[str, Any]: Ordered mapping payload.
-    """
+    """Return a new dict with ordered keys for stable serialization."""
     items: list[tuple[str, Any]] = []
     if "$meta" in d:
         items.append(("$meta", d["$meta"]))
 
-    top_keys = [k for k in d if k != "$meta"]
-    for k in sorted(top_keys, key=provider_scope_sort_key):
-        v = d[k]
-        if isinstance(v, dict):
-            inner: dict[str, Any] = {}
-            for tk in sorted(v.keys(), key=provider_scope_sort_key):
-                ranges = v[tk]
-                if isinstance(ranges, dict):
+    for key in sorted((k for k in d if k != "$meta"), key=provider_scope_sort_key):
+        value = d[key]
+        if not isinstance(value, dict):
+            items.append((key, value))
+            continue
 
-                    def _range_key(rk: str):
-                        bounds = parse_range_bounds(rk)
-                        if bounds is not None:
-                            return (0, bounds[0], rk)
-                        return (1, rk)
-
-                    sorted_ranges = dict(
-                        sorted(ranges.items(), key=lambda it: _range_key(it[0]))
+        inner: dict[str, Any] = {}
+        for target_key in sorted(value.keys(), key=provider_scope_sort_key):
+            ranges = value[target_key]
+            if isinstance(ranges, dict):
+                sorted_ranges = dict(
+                    sorted(
+                        ranges.items(),
+                        key=lambda item: _range_sort_key(item[0]),
                     )
-                    inner[tk] = sorted_ranges
-                else:
-                    inner[tk] = ranges
-            items.append((k, inner))
-        else:
-            items.append((k, v))
+                )
+                inner[target_key] = sorted_ranges
+            else:
+                inner[target_key] = ranges
+        items.append((key, inner))
 
     return dict(items)
+
+
+def _range_sort_key(key: str):
+    """Sort key for YAML sorting."""
+    bounds = parse_range_bounds(key)
+    if bounds is None:
+        return 1, key
+    return 0, bounds[0], key
