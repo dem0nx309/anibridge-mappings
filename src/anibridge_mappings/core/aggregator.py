@@ -215,6 +215,7 @@ class MappingAggregator:
         combined = EpisodeMappingGraph()
         for provider in self._episode_sources:
             graph = provider.build_episode_graph(meta_store, id_graph)
+            contributor = _episode_source_contributor(provider)
             context = ProvenanceContext(
                 stage="Source ingestion: episode mappings",
                 actor=f"Provider source: {provider.__class__.__name__}",
@@ -226,6 +227,10 @@ class MappingAggregator:
                     target_node,
                     bidirectional=True,
                     provenance=context,
+                    details={
+                        "contributor": contributor,
+                        "contribution_type": "source_ingestion",
+                    },
                 )
         return combined
 
@@ -341,6 +346,13 @@ def _validation_prune_reason(issue: ValidationIssue) -> str:
         return base
 
     return f"{base}; {'; '.join(detail_parts)}"
+
+
+def _episode_source_contributor(source: EpisodeMappingSource) -> str:
+    """Return a stable contributor label for provenance source ingestion."""
+    module_name = source.__class__.__module__.rsplit(".", maxsplit=1)[-1]
+    class_name = source.__class__.__name__
+    return f"{module_name}:{class_name}"
 
 
 def mapping_descriptor(provider: str, entry_id: str, scope: str | None) -> str:

@@ -58,9 +58,29 @@ def _event_payload(
         payload["actor"] = event.actor
     if event.reason is not None:
         payload["reason"] = event.reason
+    contributor = _event_contributor(event)
+    if contributor is not None:
+        payload["contributor"] = contributor
     if include_details and event.details:
         payload["details"] = event.details
     return payload
+
+
+def _event_contributor(event: ProvenanceEvent) -> str | None:
+    """Return a normalized contributor label for an event, if available."""
+    if event.details:
+        contributor = event.details.get("contributor")
+        if isinstance(contributor, str) and contributor.strip():
+            return contributor.strip()
+
+    if event.actor and event.stage.startswith("Source ingestion"):
+        marker = "Provider source:"
+        if marker in event.actor:
+            _, _, raw = event.actor.partition(marker)
+            candidate = raw.strip()
+            if candidate:
+                return candidate
+    return None
 
 
 def _active_ranges(events: list[dict[str, Any]]) -> list[dict[str, str]]:
@@ -79,6 +99,35 @@ def _active_ranges(events: list[dict[str, Any]]) -> list[dict[str, str]]:
         {"source_range": source_range, "target_range": target_range}
         for source_range, target_range in sorted(active)
     ]
+
+
+def _mapping_contributors(events: list[dict[str, Any]]) -> list[str]:
+    """Return all contributors that emitted events for a mapping pair."""
+    contributors = {
+        contributor
+        for event in events
+        if isinstance((contributor := event.get("contributor")), str) and contributor
+    }
+    return sorted(contributors)
+
+
+def _active_mapping_contributors(events: list[dict[str, Any]]) -> list[str]:
+    """Return contributors with at least one currently active range pair."""
+    active_pairs: dict[tuple[str, str], str] = {}
+    for event in events:
+        if not event.get("effective"):
+            continue
+        contributor = event.get("contributor")
+        source_range = str(event["source_range"])
+        target_range = str(event["target_range"])
+        pair = (source_range, target_range)
+        if event.get("action") == "add":
+            if isinstance(contributor, str) and contributor:
+                active_pairs[pair] = contributor
+        elif event.get("action") == "remove":
+            active_pairs.pop(pair, None)
+
+    return sorted(set(active_pairs.values()))
 
 
 def build_provenance_payload(
@@ -137,6 +186,8 @@ def build_provenance_payload(
         for target_descriptor in sorted(target_map):
             events = sorted(target_map[target_descriptor], key=lambda item: item["seq"])
             active_ranges = _active_ranges(events)
+            source_contributors = _mapping_contributors(events)
+            active_source_contributors = _active_mapping_contributors(events)
             present = bool(active_ranges)
             if present:
                 present_mappings += 1
@@ -148,6 +199,8 @@ def build_provenance_payload(
                     "event_count": len(events),
                     "present": present,
                     "active_ranges": active_ranges,
+                    "source_contributors": source_contributors,
+                    "active_source_contributors": active_source_contributors,
                     "events": events,
                 }
             )
