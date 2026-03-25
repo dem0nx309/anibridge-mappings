@@ -125,6 +125,13 @@ def apply_edits(
     for src_desc, targets in edits.items():
         if src_desc.startswith("$"):
             continue
+        if not isinstance(targets, dict):
+            log.warning(
+                "Invalid edit entry for source '%s' got %s. Skipping.",
+                src_desc,
+                type(targets).__name__,
+            )
+            continue
         source, source_forced, source_descriptor = _parse_edit_descriptor(src_desc)
         processed_targets = set()
 
