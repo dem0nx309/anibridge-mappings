@@ -86,13 +86,11 @@ jobs:
           {
             echo "## Mapping build summary"
             echo ""
-            echo "### stats.json"
-            if [ -f "$OUTPUT_DIR/stats.json" ]; then
-              echo "\`\`\`json"
-              cat "$OUTPUT_DIR/stats.json"
-              echo "\`\`\`"
+            echo "### stats"
+            if [ -f "$OUTPUT_DIR/stats.md" ]; then
+              cat "$OUTPUT_DIR/stats.md"
             else
-              echo "stats.json not found."
+              echo "stats.md not found."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -183,15 +181,33 @@ jobs:
             exit 1
           fi
 
+      - name: Build release notes from stats
+        shell: bash
+        run: |
+          set -euo pipefail
+          stats_md="/tmp/artifact/stats.md"
+          release_notes="/tmp/release-body.md"
+
+          {
+            echo "Automated rolling mappings build for major version ${{ needs.build.outputs.release_major }}."
+            echo ""
+            echo "Last updated: ${{ needs.build.outputs.release_date }}."
+            echo ""
+            echo "## Build stats"
+            echo ""
+            if [ -f "$stats_md" ]; then
+              cat "$stats_md"
+            else
+              echo "stats.md not found in release artifacts."
+            fi
+          } > "$release_notes"
+
       - name: Create or update major release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.build.outputs.release_tag }}
           name: Mappings ${{ needs.build.outputs.release_major }} ${{ needs.build.outputs.release_date }}
-          body: |
-            Automated rolling mappings build for major version ${{ needs.build.outputs.release_major }}.
-
-            Last updated: ${{ needs.build.outputs.release_date }}.
+          body_path: /tmp/release-body.md
           files: /tmp/release-assets/*
           fail_on_unmatched_files: true
         env:

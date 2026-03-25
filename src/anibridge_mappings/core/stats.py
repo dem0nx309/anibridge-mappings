@@ -1,5 +1,6 @@
 """Stats building for the aggregation pipeline."""
 
+import json
 from typing import Any
 
 from anibridge_mappings.core.aggregator import AggregationArtifacts
@@ -167,7 +168,7 @@ def build_stats(
                     target_provider_counts.get(tgt_provider, 0) + 1
                 )
 
-    summary = {
+    summary: dict[str, int | str] = {
         "providers": len(provider_stats),
         "distinct_descriptors": len(descriptor_union),
         "source_descriptors": source_descriptors_total,
@@ -208,3 +209,74 @@ def build_stats(
         },
     }
     return stats_payload
+
+
+def render_stats_markdown(stats_payload: dict[str, Any]) -> str:
+    """Render a human-readable markdown summary from a stats payload.
+
+    Args:
+        stats_payload (dict[str, Any]): Stats payload from ``build_stats``.
+
+    Returns:
+        str: Markdown report suitable for GitHub summaries and release notes.
+    """
+    summary = stats_payload.get("summary", {})
+    providers = stats_payload.get("providers", {})
+    lines: list[str] = ["## Mapping Stats", ""]
+
+    summary_rows = [
+        ("Providers", "providers"),
+        ("Distinct descriptors", "distinct_descriptors"),
+        ("Source descriptors", "source_descriptors"),
+        ("Target descriptors", "target_descriptors"),
+        ("Total descriptors", "descriptors"),
+        ("Source range units", "source_range_units"),
+        ("Target range units", "target_range_units"),
+        ("Validation issues", "validation_issues"),
+    ]
+
+    lines.extend(
+        [
+            "### Summary",
+            "",
+            "| Metric | Value |",
+            "|---|---:|",
+        ]
+    )
+    for label, key in summary_rows:
+        value = summary.get(key, 0)
+        lines.append(f"| {label} | {value} |")
+
+    lines.extend(["", "### Providers", ""])
+    if not providers:
+        lines.append("No provider stats available.")
+    else:
+        lines.extend(
+            [
+                "| Provider | Distinct descriptors | Distinct ids | Distinct scopes "
+                "| Source descriptors | Target descriptors | Source range units "
+                "| Target range units |",
+                "|---|---:|---:|---:|---:|---:|---:|---:|",
+            ]
+        )
+        for provider in sorted(providers):
+            details = providers.get(provider, {})
+            lines.append(
+                "| "
+                f"{provider} | "
+                f"{details.get('distinct_descriptors', 0)} | "
+                f"{details.get('distinct_ids', 0)} | "
+                f"{details.get('distinct_scopes', 0)} | "
+                f"{details.get('source_descriptors', 0)} | "
+                f"{details.get('target_descriptors', 0)} | "
+                f"{details.get('source_range_units', 0)} | "
+                f"{details.get('target_range_units', 0)} |"
+            )
+
+    lines.extend(["", "<details>", "<summary>Raw stats JSON</summary>", ""])
+    lines.append("```json")
+    lines.append(json.dumps(stats_payload, ensure_ascii=False, indent=2))
+    lines.append("```")
+    lines.extend(["", "</details>", ""])
+
+    return "\n".join(lines)
