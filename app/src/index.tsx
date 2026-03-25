@@ -7,55 +7,81 @@ const app = new OpenAPIHono<{ Bindings: Bindings }>({ strict: false });
 
 const PROVENANCE_URL =
   "https://github.com/anibridge/anibridge-mappings/releases/latest/download/provenance.zip";
-const LOCAL_PROVENANCE_FS_PATH = `/@fs${
-  new URL("../../data/out/provenance.zip", import.meta.url).pathname
-}`;
+const MAPPINGS_URL =
+  "https://github.com/anibridge/anibridge-mappings/releases/latest/download/mappings.json";
 
 type MappingsPayload = {
   [key: string]: { [key: string]: { [key: string]: string } };
 };
 
-const MAPPINGS_URL =
-  "https://github.com/anibridge/anibridge-mappings/releases/latest/download/mappings.json";
-const LOCAL_MAPPINGS_FS_PATH = `/@fs${
-  new URL("../../data/out/mappings.json", import.meta.url).pathname
-}`;
-
 let mappingsPromise: Promise<MappingsPayload> | null = null;
+type SourceIndex = Map<string, Map<string, Map<string, string>>>;
+let sourceIndexPromise: Promise<SourceIndex> | null = null;
+
+const isDev = () => {
+  try {
+    return !!import.meta.env?.DEV;
+  } catch {
+    return false;
+  }
+};
+
+const getLocalFsUrl = (relativePath: string, requestUrl: string) => {
+  const filePath = new URL(relativePath, import.meta.url).pathname;
+  return new URL(`/@fs${filePath}`, requestUrl);
+};
+
+const normalizeText = (value: string | undefined) =>
+  (value ?? "").trim().toLowerCase();
+
+const toNumber = (value: string | undefined, fallback: number) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
 
 const getMappings = async (requestUrl?: string): Promise<MappingsPayload> => {
   const EDGE_CACHE_TTL = 6 * 60 * 60;
 
   if (!mappingsPromise) {
     mappingsPromise = (async () => {
-      if (import.meta.env.DEV) {
+      if (isDev()) {
         if (!requestUrl) {
           throw new Error(
             "requestUrl is required in DEV to resolve local mappings.",
           );
         }
-        const localUrl = new URL(LOCAL_MAPPINGS_FS_PATH, requestUrl);
+
+        const localUrl = getLocalFsUrl(
+          "../../data/out/mappings.json",
+          requestUrl,
+        );
         const res = await fetch(localUrl.toString(), {
           headers: { Accept: "application/json" },
         });
+
         if (!res.ok) {
           throw new Error(
             `Failed to fetch local mappings: ${res.status} ${res.statusText}`,
           );
         }
+
         return (await res.json()) as MappingsPayload;
       }
 
-      const init: any = {
+      const init: RequestInit & {
+        cf?: { cacheTtl?: number; cacheEverything?: boolean };
+      } = {
         headers: { Accept: "application/json" },
         cf: { cacheTtl: EDGE_CACHE_TTL, cacheEverything: true },
       };
+
       const res = await fetch(MAPPINGS_URL, init);
       if (!res.ok) {
         throw new Error(
           `Failed to fetch mappings: ${res.status} ${res.statusText}`,
         );
       }
+
       return (await res.json()) as MappingsPayload;
     })().catch((err) => {
       mappingsPromise = null;
@@ -68,15 +94,20 @@ const getMappings = async (requestUrl?: string): Promise<MappingsPayload> => {
 
 app.get("/data/provenance.zip", async (c) => {
   try {
-    if (import.meta.env.DEV) {
-      const localUrl = new URL(LOCAL_PROVENANCE_FS_PATH, c.req.url);
+    if (isDev()) {
+      const localUrl = getLocalFsUrl(
+        "../../data/out/provenance.zip",
+        c.req.url,
+      );
       const upstream = await fetch(localUrl.toString(), {
         headers: { Accept: "application/zip" },
       });
+
       const headers = new Headers(upstream.headers);
       headers.set("Access-Control-Allow-Origin", "*");
       headers.set("Cache-Control", "no-store");
       headers.set("Vary", "Origin");
+
       return new Response(await upstream.arrayBuffer(), {
         status: upstream.status,
         headers,
@@ -86,10 +117,12 @@ app.get("/data/provenance.zip", async (c) => {
     const upstream = await fetch(PROVENANCE_URL, {
       headers: { Accept: "application/zip" },
     });
+
     const headers = new Headers(upstream.headers);
     headers.set("Access-Control-Allow-Origin", "*");
     headers.set("Cache-Control", "public, max-age=3600");
     headers.set("Vary", "Origin");
+
     return new Response(await upstream.arrayBuffer(), {
       status: upstream.status,
       headers,
@@ -101,14 +134,6 @@ app.get("/data/provenance.zip", async (c) => {
     });
   }
 });
-
-const normalizeText = (value: string | undefined) =>
-  (value ?? "").trim().toLowerCase();
-
-const toNumber = (value: string | undefined, fallback: number) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-};
 
 const mappingsQuerySchema = z.object({
   provider: z.string().optional(),
@@ -142,9 +167,6 @@ const mappingsRoute = createRoute({
     },
   },
 });
-
-type SourceIndex = Map<string, Map<string, Map<string, string>>>;
-let sourceIndexPromise: Promise<SourceIndex> | null = null;
 
 const getSourceIndex = async (requestUrl: string) => {
   if (!sourceIndexPromise) {
@@ -273,7 +295,7 @@ app.get(
   swaggerUI({ url: "/openapi.json", title: "AniBridge Mappings API" }),
 );
 
-if (!import.meta.env.DEV) {
+if (!isDev()) {
   app.get("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 }
 
