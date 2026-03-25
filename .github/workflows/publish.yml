@@ -193,8 +193,6 @@ jobs:
             echo ""
             echo "Last updated: ${{ needs.build.outputs.release_date }}."
             echo ""
-            echo "## Build stats"
-            echo ""
             if [ -f "$stats_md" ]; then
               cat "$stats_md"
             else
