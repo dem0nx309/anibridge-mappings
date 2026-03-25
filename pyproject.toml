@@ -15,6 +15,7 @@ maintainers = [
 ]
 
 dependencies = [
+    "anibridge-utils>=0.2.0b3",
     "aiohttp>=3.13.2",
     "anibridge-utils>=0.1.1",
     "dotenv>=0.9.9",
@@ -50,9 +51,6 @@ select = ["B", "D", "DOC", "E", "F", "I", "RUF", "SIM", "UP", "W"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
-
-[tool.uv.sources]
-anibridge-utils = { git = "https://github.com/anibridge/anibridge-utils.git" }
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
