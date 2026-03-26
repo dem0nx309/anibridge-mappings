@@ -61,7 +61,7 @@ class BaseShinkroMappingSource(BaseSource):
         """Normalize an ID to a positive numeric string."""
         try:
             num = int(value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
         if num <= 0:
             return None
@@ -72,7 +72,7 @@ class BaseShinkroMappingSource(BaseSource):
         """Normalize an integer to a positive numeric string."""
         try:
             num = int(value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
         if num <= 0:
             return None
@@ -301,7 +301,7 @@ class ShinkroTvdbMappingSource(
         """Normalize a season number into a non-negative integer."""
         try:
             num = int(value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
         if num < 0:
             return None
@@ -312,7 +312,7 @@ class ShinkroTvdbMappingSource(
         """Normalize a start value to a non-negative integer."""
         try:
             num = int(value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return 0
         return max(num, 0)
 
@@ -325,7 +325,7 @@ class ShinkroTvdbMappingSource(
         for item in value:
             try:
                 candidate = int(item)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
             if candidate > 0:
                 skip.add(candidate)
