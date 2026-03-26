@@ -31,12 +31,6 @@ Documentation = "https://anibridge.eliasbenb.dev"
 Source = "https://github.com/anibridge/anibridge-mappings"
 Issues = "https://github.com/anibridge/anibridge-mappings/issues"
 
-[tool.hatch.build]
-packages = ["src/anibridge_mappings"]
-
-[tool.hatch.metadata]
-allow-direct-references = true
-
 [tool.ruff]
 indent-width = 4
 line-length = 88
@@ -49,18 +43,26 @@ quote-style = "double"
 [tool.ruff.lint]
 select = ["B", "D", "DOC", "E", "F", "I", "RUF", "SIM", "UP", "W"]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["D"]
+
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "--cov=src"
+filterwarnings = []
+
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
-build-backend = "hatchling.build"
+requires = ["uv_build>=0.10.9,<0.11.0"]
+build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-    "hatchling>=1.28.0",
-    "pytest>=9.0.1",
-    "ruff>=0.14.8",
-    "ty>=0.0.12",
+    "pytest>=9.0.2",
+    "ruff>=0.15.5",
+    "ty>=0.0.22",
     "types-lxml>=2025.11.25",
 ]

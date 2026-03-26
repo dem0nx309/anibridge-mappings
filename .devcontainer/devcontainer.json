@@ -16,6 +16,7 @@
         "esbenp.prettier-vscode",
         "ms-python.python",
         "redhat.vscode-yaml",
+        "tamasfe.even-better-toml",
         "yzhang.markdown-all-in-one"
       ],
       "settings": { "python-envs.terminal.autoActivationType": "shellStartup" }
