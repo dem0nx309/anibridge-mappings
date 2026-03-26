@@ -174,7 +174,7 @@ def normalize_reversed_pair(
             source_ratio = 0
         if source_ratio != 0 and "|" not in normalized_target:
             normalized_source = source_base
-            normalized_target = f"{normalized_target}|{-abs(source_ratio)}"
+            normalized_target = f"{normalized_target}|{-source_ratio}"
 
     if "," not in normalized_source:
         return [(normalized_source, normalized_target)]
