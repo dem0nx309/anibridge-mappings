@@ -1,0 +1,204 @@
+import asyncio
+from datetime import UTC, datetime, timedelta
+
+import aiohttp
+
+from anibridge_mappings.core.meta import SourceMeta
+from anibridge_mappings.sources.tvdb import (
+    BaseTvdbSource,
+    TvdbMovieSource,
+    TvdbShowSource,
+)
+
+
+class _FakeResponse:
+    def __init__(self, *, status: int, payload: dict, headers: dict | None = None):
+        self.status = status
+        self._payload = payload
+        self.headers = headers or {}
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    def raise_for_status(self) -> None:
+        if self.status >= 400 and self.status != 429 and self.status != 404:
+            from aiohttp import RequestInfo
+            from yarl import URL
+
+            info = RequestInfo(
+                url=URL("http://test"),
+                method="GET",
+                headers={},  # type: ignore
+            )
+            raise aiohttp.ClientResponseError(info, (), status=self.status)
+
+    async def json(self) -> dict:
+        return self._payload
+
+
+class _FakeSession:
+    def __init__(self, get_responses=None, post_responses=None):
+        self._get_responses = get_responses or []
+        self._post_responses = post_responses or []
+
+    def get(self, url):
+        del url
+        return self._get_responses.pop(0)
+
+    def post(self, url, json):
+        del url, json
+        return self._post_responses.pop(0)
+
+
+class DummyTvdbSource(BaseTvdbSource):
+    provider_key = "tvdb_show"
+    cache_filename = "dummy_tvdb.json"
+
+    async def _fetch_entry(self, session, entry_id, scope):
+        raise AssertionError
+
+
+def test_tvdb_parse_helpers() -> None:
+    assert BaseTvdbSource._parse_runtime("24") == 24
+    assert BaseTvdbSource._parse_runtime(-1) is None
+    assert BaseTvdbSource._parse_year("2020-01-01") == 2020
+    assert BaseTvdbSource._scope_from_season(3) == "s3"
+
+    dt = BaseTvdbSource._extract_air_date({"aired": "2020-05-01"})
+    assert dt is not None and dt.tzinfo == UTC
+
+    assert BaseTvdbSource._extract_finale_type({"finaleType": "season"}) == "season"
+    assert BaseTvdbSource._extract_season_number({"seasonNumber": "2"}) == 2
+
+
+def test_tvdb_build_show_scope_meta_marks_recent_incomplete() -> None:
+    source = DummyTvdbSource()
+    recent = (datetime.now(UTC) - timedelta(days=10)).date().isoformat()
+
+    episodes = [
+        {"seasonNumber": 1, "airDate": "2010-01-01", "finaleType": "season"},
+        {"seasonNumber": 1, "airDate": "2010-01-08"},
+        {"seasonNumber": 2, "airDate": recent},
+    ]
+
+    scope_meta = source._build_show_scope_meta(episodes, 24)
+    assert scope_meta["s1"].episodes == 2
+    assert scope_meta["s2"].episodes is None
+
+
+def test_tvdb_movie_and_show_response_parsing() -> None:
+    movie_source = TvdbMovieSource()
+    movie = movie_source._build_movie_meta(110, "2022-01-01")
+    assert movie.episodes == 1
+    assert movie.start_year == 2022
+
+    show_source = TvdbShowSource()
+    movie_dict: dict[str | None, SourceMeta] = {"s1": movie}
+    subset = show_source._subset_scope_meta(movie_dict, "s1")
+    assert subset == {"s1": movie}
+
+
+def test_tvdb_extract_helpers_cover_edge_cases() -> None:
+    assert BaseTvdbSource._extract_season_number({"airedSeason": "4"}) == 4
+    assert BaseTvdbSource._extract_season_number({"season": "x"}) is None
+
+    assert BaseTvdbSource._extract_air_year({"airDateUtc": "2021-02-03"}) == 2021
+    assert BaseTvdbSource._extract_air_year({"airDateUtc": "bad"}) is None
+
+    assert (
+        BaseTvdbSource._extract_air_date({"airDate": "2022-01-01T00:00:00+00:00"})
+        is not None
+    )
+    assert BaseTvdbSource._extract_air_date({"airDate": "not-a-date"}) is None
+
+    assert (
+        BaseTvdbSource._extract_finale_type({"seriesFinaleType": "series"}) == "series"
+    )
+    assert BaseTvdbSource._extract_finale_type({"finaleType": "other"}) is None
+
+
+def test_tvdb_subset_scope_meta_none_and_missing() -> None:
+    meta: dict[str | None, SourceMeta] = {"s1": SourceMeta(episodes=10)}
+    assert BaseTvdbSource._subset_scope_meta(meta, None) == meta
+    assert BaseTvdbSource._subset_scope_meta(meta, "s9") is None
+
+
+def test_tvdb_request_json_and_token_branches(monkeypatch) -> None:
+    source = DummyTvdbSource()
+
+    async def _fake_sleep(delay: int) -> None:
+        del delay
+
+    monkeypatch.setattr("anibridge_mappings.sources.tvdb.asyncio.sleep", _fake_sleep)
+
+    # request_json: 429 retry then success
+    session = _FakeSession(
+        get_responses=[
+            _FakeResponse(status=429, payload={}, headers={"Retry-After": "0"}),
+            _FakeResponse(status=200, payload={"ok": True}),
+        ]
+    )
+    payload, cacheable = asyncio.run(source._request_json(session, "http://x"))  # type: ignore
+    assert payload == {"ok": True}
+    assert cacheable is True
+
+    # request_json: 404 treated as cacheable miss
+    session_404 = _FakeSession(get_responses=[_FakeResponse(status=404, payload={})])
+    payload_404, cacheable_404 = asyncio.run(
+        source._request_json(session_404, "http://x")  # type: ignore
+    )
+    assert payload_404 is None and cacheable_404 is True
+
+    # token fetch: 429 then success
+    monkeypatch.setenv("TVDB_API_KEY", "k")
+    token_session = _FakeSession(
+        post_responses=[
+            _FakeResponse(status=429, payload={}, headers={"Retry-After": "0"}),
+            _FakeResponse(status=200, payload={"data": {"token": "abc"}}),
+        ]
+    )
+    token = asyncio.run(source._get_or_fetch_token(token_session))  # type: ignore
+    assert token == "abc"
+
+
+def test_tvdb_show_and_movie_fetch_entry_parsing(monkeypatch) -> None:
+    show_source = TvdbShowSource()
+
+    async def _fake_show_meta(session, base_id):
+        del session, base_id
+        return ({"s1": SourceMeta(episodes=12), "s2": SourceMeta(episodes=6)}, True)
+
+    monkeypatch.setattr(show_source, "_get_or_fetch_show_meta", _fake_show_meta)
+
+    class _FakeSess1:
+        pass
+
+    entry, scoped, cacheable = asyncio.run(
+        show_source._fetch_entry(_FakeSess1(), "77", "s1")  # type: ignore
+    )
+    assert entry == "77"
+    assert cacheable is True
+    assert scoped == {"s1": SourceMeta(episodes=12)}
+
+    movie_source = TvdbMovieSource()
+
+    async def _fake_movie_payload(session, base_id):
+        del session, base_id
+        return ({"data": {"runtimeMinutes": 95, "released": "2020-10-01"}}, True)
+
+    monkeypatch.setattr(movie_source, "_request_movie_payload", _fake_movie_payload)
+
+    class _FakeSess2:
+        pass
+
+    entry_id, scope_meta, cacheable = asyncio.run(
+        movie_source._fetch_entry(_FakeSess2(), "88", None)  # type: ignore
+    )
+    assert entry_id == "88"
+    assert cacheable is True
+    assert scope_meta is not None
+    assert scope_meta[None].episodes == 1
+    assert scope_meta[None].duration == 95
