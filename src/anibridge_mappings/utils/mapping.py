@@ -2,7 +2,7 @@
 
 import re
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
 from anibridge.utils.mappings import parse_mapping_descriptor
 
@@ -18,12 +18,14 @@ from anibridge_mappings.core.range_specs import (
     range_bounds,
 )
 
-SourceNode = tuple[str, str, str | None]
-TargetNode = tuple[str, str, str | None]
-SourceTargetMap = dict[
+type SourceNode = tuple[str, str, str | None]
+type TargetNode = tuple[str, str, str | None]
+type SourceTargetMap = dict[
     SourceNode,
     dict[TargetNode, dict[str, set[str]]],
 ]
+type SortPart = tuple[int, int | str]
+type ProviderScopeSortKey = tuple[int, str, SortPart, SortPart, int]
 
 
 def parse_descriptor(descriptor: str) -> tuple[str, str, str | None]:
@@ -268,23 +270,24 @@ def _format_target_value(start: int, end: int, ratio: int | None) -> str:
     return base if ratio is None else f"{base}|{ratio}"
 
 
-def provider_scope_sort_key(k: str):
+def provider_scope_sort_key(k: str) -> ProviderScopeSortKey:
     """Return a sort key for provider-scoped mapping descriptors."""
     forced = k.startswith("^")
     normalized = k.removeprefix("^") if forced else k
+    forced_key = 1 if forced else 0
     if normalized.startswith("$"):
-        return (0, normalized, "", 1 if forced else 0)
+        return (0, normalized, (0, ""), (0, ""), forced_key)
 
     match = re.match(
         r"^(?P<provider>[a-zA-Z_][a-zA-Z0-9_]*):(?P<id>[^:]+)(?::(?P<scope>[^:]+))?$",
         normalized,
     )
     if not match:
-        return (2, normalized, "", 1 if forced else 0)
+        return (2, normalized, (0, ""), (0, ""), forced_key)
 
-    provider = match.group("provider")
-    id_str = match.group("id")
-    scope = match.group("scope")
+    provider = cast(str, match.group("provider"))
+    id_str = cast(str, match.group("id"))
+    scope = cast(str | None, match.group("scope"))
     id_key = (0, int(id_str)) if id_str.isdigit() else (1, id_str)
 
     if scope is None:
@@ -298,7 +301,7 @@ def provider_scope_sort_key(k: str):
             scope_match = re.match(r"^s([0-9]+)$", scope)
             scope_key = (2, int(scope_match.group(1))) if scope_match else (3, scope)
 
-    return (1, provider, id_key, scope_key, 1 if forced else 0)
+    return (1, provider, id_key, scope_key, forced_key)
 
 
 def ordered_payload(d: dict[str, Any]) -> dict[str, Any]:
@@ -314,7 +317,11 @@ def ordered_payload(d: dict[str, Any]) -> dict[str, Any]:
             continue
 
         inner: dict[str, Any] = {}
-        for target_key in sorted(value.keys(), key=provider_scope_sort_key):
+        for target_key in sorted(
+            value.keys(), key=lambda k: provider_scope_sort_key(k)
+        ):
+            if not isinstance(target_key, str):
+                continue
             ranges = value[target_key]
             if isinstance(ranges, dict):
                 sorted_ranges = dict(

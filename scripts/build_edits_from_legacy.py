@@ -168,7 +168,7 @@ class MetaIndex:
         if default_show_scope and normalized_scope is None and len(payload) == 1:
             only = next(iter(payload.values()))
             if isinstance(only, dict):
-                episodes = only.get("episodes")
+                episodes = only.get("episodes")  # type: ignore
                 if isinstance(episodes, int) and episodes > 0:
                     return episodes
         return None

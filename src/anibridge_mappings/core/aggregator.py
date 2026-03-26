@@ -248,7 +248,7 @@ class MappingAggregator:
         for validator in self._validators:
             try:
                 result = validator.validate(context)
-            except Exception as exc:  # pragma: no cover - defensive logging
+            except Exception as exc:
                 log.exception("Validator %s failed: %s", validator.name, exc)
                 continue
             if result:
