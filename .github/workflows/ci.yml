@@ -1,4 +1,4 @@
-name: Publish Mappings
+name: CI
 
 on:
   push:
@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -22,9 +22,54 @@ env:
   OUTPUT_DIR: "data/out"
 
 jobs:
-  build:
-    environment: publish
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || github.ref }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install dependencies
+        run: uv sync --group dev --locked
+
+      - name: Run linters
+        run: uv run ruff check . && uv run ruff format --check .
+
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install dependencies
+        run: uv sync --group dev --locked
+
+      - name: Run pytest
+        run: uv run pytest
+
+  build:
+    name: Build Release
+    needs:
+      - lint
+      - tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       release_tag: ${{ steps.vars.outputs.release_tag }}
       release_major: ${{ steps.vars.outputs.release_major }}
@@ -70,6 +115,7 @@ jobs:
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
           TVDB_API_KEY: ${{ secrets.TVDB_API_KEY }}
         run: |
+          set -euo pipefail
           uv run ./main.py --out "$OUTPUT_DIR" --compress --stats --provenance
 
       - name: Upload release artifact
@@ -95,8 +141,12 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   diff:
-    needs: build
+    name: Diff Release
+    needs:
+      - build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Download artifact
         uses: actions/download-artifact@v7
@@ -140,13 +190,13 @@ jobs:
           path: /tmp/mappings.diff
           if-no-files-found: error
 
-  publish-release:
+  publish:
+    name: Publish Release
     if: ${{ github.event_name != 'pull_request' }}
     needs:
       - build
-      - diff
-    environment: publish
     runs-on: ubuntu-latest
+    environment: publish
     permissions:
       contents: write
     steps:
