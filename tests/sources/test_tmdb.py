@@ -1,5 +1,7 @@
 import asyncio
 
+import pytest
+
 from anibridge_mappings.core.meta import SourceMeta
 from anibridge_mappings.sources.tmdb import TmdbSource
 
@@ -17,18 +19,27 @@ def test_tmdb_scope_helpers() -> None:
     assert TmdbSource._subset_scope_meta(all_scopes, "missing") is None
 
 
-def test_tmdb_session_kwargs_without_token(monkeypatch) -> None:
+def test_tmdb_session_kwargs_without_token_raises(monkeypatch) -> None:
     monkeypatch.delenv("TMDB_API_KEY", raising=False)
     source = TmdbSource()
-    assert source._session_kwargs() == {}
+    with pytest.raises(RuntimeError, match="TMDB_API_KEY is required"):
+        source._session_kwargs()
 
 
-def test_tmdb_fetch_missing_without_token_marks_non_cacheable(monkeypatch) -> None:
+def test_tmdb_fetch_missing_without_token_raises(monkeypatch) -> None:
     monkeypatch.delenv("TMDB_API_KEY", raising=False)
     source = TmdbSource()
 
-    result = asyncio.run(source._fetch_missing([("1", None), ("2", "s1")]))
-    assert result == [("1", None, False), ("2", None, False)]
+    with pytest.raises(RuntimeError, match="TMDB_API_KEY is required"):
+        asyncio.run(source._fetch_missing([("1", None), ("2", "s1")]))
+
+
+def test_tmdb_prepare_requires_token(monkeypatch) -> None:
+    monkeypatch.delenv("TMDB_API_KEY", raising=False)
+    source = TmdbSource()
+
+    with pytest.raises(RuntimeError, match="TMDB_API_KEY is required"):
+        asyncio.run(source.prepare())
 
 
 def test_tmdb_get_or_fetch_show_meta_uses_cache_and_parses_seasons(monkeypatch) -> None:

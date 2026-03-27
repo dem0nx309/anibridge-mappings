@@ -8,6 +8,7 @@ from logging import getLogger
 from typing import Any
 
 import aiohttp
+from anibridge.utils.cache import cache
 
 from anibridge_mappings.core.meta import SourceMeta, SourceType
 from anibridge_mappings.sources.base import CachedMetadataSource
@@ -22,7 +23,6 @@ class BaseTvdbSource(CachedMetadataSource):
     LOGIN_ENDPOINT = f"{API_ROOT}/login"
     API_KEY_ENV = "TVDB_API_KEY"
     API_PIN_ENV = "TVDB_PIN"
-    requires_auth = True
     RECENT_AIR_DAYS = 180
     CACHE_VERSION = 2
 
@@ -38,12 +38,20 @@ class BaseTvdbSource(CachedMetadataSource):
         super().__init__(concurrency=concurrency)
         self._token: str | None = None
 
+    async def prepare(self) -> None:
+        """Load cache data and validate TVDB authentication."""
+        await super().prepare()
+        async with aiohttp.ClientSession() as session:
+            await self._get_or_fetch_token(session)
+
     @classmethod
+    @cache
     def _get_api_key(cls) -> str | None:
         """Read the TVDB API key from the environment."""
         return os.environ.get(cls.API_KEY_ENV)
 
     @classmethod
+    @cache
     def _get_pin(cls) -> str | None:
         """Read the optional TVDB PIN from the environment."""
         return os.environ.get(cls.API_PIN_ENV)
@@ -52,18 +60,8 @@ class BaseTvdbSource(CachedMetadataSource):
         self,
         entry_ids: list[tuple[str, str | None]],
     ) -> list[tuple[str, dict[str | None, SourceMeta] | None, bool]]:
-        if not self.requires_auth:
-            return await super()._fetch_missing(entry_ids)
-
-        api_key = self._get_api_key()
-        if not api_key:
-            log.warning("TVDB_API_KEY not set; skipping TVDB metadata fetch")
-            return [(entry_id, None, False) for entry_id, _scope in entry_ids]
-
         async with aiohttp.ClientSession() as session:
             token = await self._get_or_fetch_token(session)
-            if not token:
-                return [(entry_id, None, False) for entry_id, _scope in entry_ids]
 
         headers = {
             "Accept": "application/json",
@@ -83,14 +81,14 @@ class BaseTvdbSource(CachedMetadataSource):
                 )
             )
 
-    async def _get_or_fetch_token(self, session: aiohttp.ClientSession) -> str | None:
+    async def _get_or_fetch_token(self, session: aiohttp.ClientSession) -> str:
         """Login to TVDB and return a bearer token."""
         if self._token:
             return self._token
 
         api_key = self._get_api_key()
         if not api_key:
-            return None
+            raise RuntimeError("TVDB_API_KEY is required for TVDB metadata fetches")
 
         payload: dict[str, Any] = {"apikey": api_key}
         pin = self._get_pin()
@@ -108,8 +106,7 @@ class BaseTvdbSource(CachedMetadataSource):
                 try:
                     response.raise_for_status()
                 except aiohttp.ClientResponseError as exc:
-                    log.error("TVDB login failed: %s", exc)
-                    return None
+                    raise RuntimeError(f"TVDB login failed: {exc}") from exc
 
                 payload_data: dict[str, Any] = await response.json()
                 data = (
@@ -117,8 +114,7 @@ class BaseTvdbSource(CachedMetadataSource):
                 )
                 token = data.get("token") if isinstance(data, dict) else None
                 if not token:
-                    log.error("TVDB login response missing token")
-                    return None
+                    raise RuntimeError("TVDB login response missing token")
                 self._token = token
                 return token
 

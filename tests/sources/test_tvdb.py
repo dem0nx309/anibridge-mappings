@@ -2,6 +2,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 
 import aiohttp
+import pytest
 
 from anibridge_mappings.core.meta import SourceMeta
 from anibridge_mappings.sources.tvdb import (
@@ -162,6 +163,33 @@ def test_tvdb_request_json_and_token_branches(monkeypatch) -> None:
     )
     token = asyncio.run(source._get_or_fetch_token(token_session))  # type: ignore
     assert token == "abc"
+
+
+def test_tvdb_get_or_fetch_token_requires_api_key(monkeypatch) -> None:
+    source = DummyTvdbSource()
+    monkeypatch.setattr(source, "_get_api_key", lambda: None)
+
+    with pytest.raises(RuntimeError, match="TVDB_API_KEY is required"):
+        asyncio.run(source._get_or_fetch_token(_FakeSession()))  # type: ignore
+
+
+def test_tvdb_prepare_raises_when_token_fetch_fails(monkeypatch) -> None:
+    monkeypatch.setenv("TVDB_API_KEY", "k")
+    source = DummyTvdbSource()
+
+    class _PrepareSession:
+        async def __aenter__(self):
+            return _FakeSession(post_responses=[_FakeResponse(status=200, payload={})])
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(
+        "anibridge_mappings.sources.tvdb.aiohttp.ClientSession", _PrepareSession
+    )
+
+    with pytest.raises(RuntimeError, match="TVDB login response missing token"):
+        asyncio.run(source.prepare())
 
 
 def test_tvdb_show_and_movie_fetch_entry_parsing(monkeypatch) -> None:

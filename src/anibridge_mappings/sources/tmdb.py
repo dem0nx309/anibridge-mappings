@@ -6,6 +6,7 @@ from logging import getLogger
 from typing import Any
 
 import aiohttp
+from anibridge.utils.cache import cache
 
 from anibridge_mappings.core.meta import SourceMeta, SourceType
 from anibridge_mappings.sources.base import CachedMetadataSource
@@ -32,7 +33,13 @@ class TmdbSource(CachedMetadataSource):
         super().__init__(concurrency=concurrency)
         self._show_cache: dict[str, dict[str | None, SourceMeta] | None] = {}
 
+    async def prepare(self) -> None:
+        """Load cache data and validate TMDB authentication configuration."""
+        await super().prepare()
+        self._require_token()
+
     @staticmethod
+    @cache
     def _get_token() -> str | None:
         """Read the TMDB bearer token from `TMDB_API_KEY`.
 
@@ -43,11 +50,17 @@ class TmdbSource(CachedMetadataSource):
             return None
         return token
 
+    @classmethod
+    def _require_token(cls) -> str:
+        """Return the configured TMDB token or raise when missing."""
+        token = cls._get_token()
+        if not token:
+            raise RuntimeError("TMDB_API_KEY is required for TMDB metadata fetches")
+        return token
+
     def _session_kwargs(self) -> dict[str, Any]:
         """Return aiohttp session settings for TMDB requests."""
-        token = self._get_token()
-        if not token:
-            return {}
+        token = self._require_token()
         return {
             "headers": {
                 "Accept": "application/json",
@@ -59,10 +72,6 @@ class TmdbSource(CachedMetadataSource):
         self,
         entry_ids: list[tuple[str, str | None]],
     ) -> list[tuple[str, dict[str | None, SourceMeta] | None, bool]]:
-        token = self._get_token()
-        if not token:
-            log.warning("TMDB_API_KEY not set; skipping TMDB metadata fetch")
-            return [(entry_id, None, False) for entry_id, _scope in entry_ids]
         return await super()._fetch_missing(entry_ids)
 
     async def _fetch_entry(
