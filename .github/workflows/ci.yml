@@ -98,7 +98,7 @@ jobs:
           path: data/meta
           key: meta-${{ steps.cache-vars.outputs.uv_version }}-${{ steps.cache-vars.outputs.cache_month }}
           restore-keys: |
-            meta-${{ steps.cache-vars.outputs.uv_version }}-
+            meta-${{ steps.cache-vars.outputs.uv_version }}-${{ steps.cache-vars.outputs.cache_month }}
 
       - name: Compute release vars
         id: release-vars
