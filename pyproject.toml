@@ -7,17 +7,17 @@ requires-python = ">=3.14"
 license = { text = "MIT" }
 
 authors = [
-    { name = "Elias Benbourenane", email = "eliasbenbourenane@gmail.com" }
+    { name = "Elias Benbourenane", email = "eliasbenbourenane@gmail.com" },
 ]
 maintainers = [
     { name = "Elias Benbourenane", email = "eliasbenbourenane@gmail.com" },
-    { name = "LuceoEtzio" }
+    { name = "LuceoEtzio" },
 ]
 
 dependencies = [
     "anibridge-utils>=0.2.0b3",
     "aiohttp>=3.13.2",
-    "anibridge-utils>=0.1.1",
+    "anibridge-utils>=0.2.0b4",
     "dotenv>=0.9.9",
     "lxml>=6.0.2",
     "pydantic>=2.12.5",
