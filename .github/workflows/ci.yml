@@ -71,9 +71,9 @@ jobs:
     permissions:
       contents: read
     outputs:
-      release_tag: ${{ steps.vars.outputs.release_tag }}
-      release_major: ${{ steps.vars.outputs.release_major }}
-      release_date: ${{ steps.vars.outputs.release_date }}
+      release_tag: ${{ steps.release-vars.outputs.release_tag }}
+      release_major: ${{ steps.release-vars.outputs.release_major }}
+      release_date: ${{ steps.release-vars.outputs.release_date }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -83,16 +83,15 @@ jobs:
         run: |
           set -euo pipefail
           echo "cache_month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+          echo "uv_version=$(uv version --short)" >> "$GITHUB_OUTPUT"
 
       - name: Cache metadata
-        id: cache-meta
         uses: actions/cache@v5
         with:
           path: data/meta
-          key: meta-${{ steps.cache-vars.outputs.cache_month }}-${{ github.run_id }}
+          key: meta-${{ steps.cache-vars.outputs.uv_version }}-${{ steps.cache-vars.outputs.cache_month }}
           restore-keys: |
-            meta-${{ steps.cache-vars.outputs.cache_month }}-
-            meta-
+            meta-${{ steps.cache-vars.outputs.uv_version }}-
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
@@ -101,11 +100,11 @@ jobs:
         run: uv sync --locked
 
       - name: Compute release vars
-        id: vars
+        id: release-vars
         run: |
           set -euo pipefail
-          version=$(uv run python -c "import importlib.metadata; print(importlib.metadata.version('anibridge-mappings'))")
-          major="${version%%.*}"
+          uv_version="${{ steps.cache-vars.outputs.uv_version }}"
+          major="${uv_version%%.*}"
           echo "release_date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
           echo "release_major=v$major" >> "$GITHUB_OUTPUT"
           echo "release_tag=v$major" >> "$GITHUB_OUTPUT"
