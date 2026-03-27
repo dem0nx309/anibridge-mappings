@@ -78,6 +78,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install dependencies
+        run: uv sync --locked
+
       - name: Compute cache vars
         id: cache-vars
         run: |
@@ -92,12 +98,6 @@ jobs:
           key: meta-${{ steps.cache-vars.outputs.uv_version }}-${{ steps.cache-vars.outputs.cache_month }}
           restore-keys: |
             meta-${{ steps.cache-vars.outputs.uv_version }}-
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v7
-
-      - name: Install dependencies
-        run: uv sync --locked
 
       - name: Compute release vars
         id: release-vars
