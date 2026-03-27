@@ -46,5 +46,4 @@ def test_build_and_render_stats_payload() -> None:
     assert stats["validator"]["total_issues"] == 1
 
     md = render_stats_markdown(stats)
-    assert "## Mapping Stats" in md
     assert "Raw stats JSON" in md

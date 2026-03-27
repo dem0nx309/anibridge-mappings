@@ -130,9 +130,6 @@ jobs:
         run: |
           set -euo pipefail
           {
-            echo "## Mapping build summary"
-            echo ""
-            echo "### stats"
             if [ -f "$OUTPUT_DIR/stats.md" ]; then
               cat "$OUTPUT_DIR/stats.md"
             else

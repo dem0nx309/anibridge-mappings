@@ -223,7 +223,7 @@ def render_stats_markdown(stats_payload: dict[str, Any]) -> str:
     """
     summary = stats_payload.get("summary", {})
     providers = stats_payload.get("providers", {})
-    lines: list[str] = ["## Mapping Stats", ""]
+    lines: list[str] = []
 
     summary_rows = [
         ("Providers", "providers"),
