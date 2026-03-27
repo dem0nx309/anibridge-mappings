@@ -1,12 +1,12 @@
 """Protocols for data source implementations."""
 
 import asyncio
-import json
 from logging import getLogger
 from pathlib import Path
 from typing import Any, ClassVar, Protocol, runtime_checkable
 
 import aiohttp
+import orjson
 
 from anibridge_mappings.core.graph import EpisodeMappingGraph, IdMappingGraph
 from anibridge_mappings.core.meta import MetaStore, SourceMeta
@@ -213,7 +213,7 @@ class CachedMetadataSource(MetadataSource):
         CachedMetadataSource.DATA_DIR.mkdir(parents=True, exist_ok=True)
         if not path.exists():
             return {}
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload = orjson.loads(path.read_bytes())
         if isinstance(payload, dict) and payload.get("version") == self.CACHE_VERSION:
             entries = payload.get("entries") or {}
             return {
@@ -241,8 +241,8 @@ class CachedMetadataSource(MetadataSource):
         """Persist the in-memory cache to disk."""
         path = self.cache_path
         CachedMetadataSource.DATA_DIR.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps(
+        path.write_bytes(
+            orjson.dumps(
                 {
                     "version": self.CACHE_VERSION,
                     "entries": {
@@ -257,11 +257,8 @@ class CachedMetadataSource(MetadataSource):
                         for entry_id, scopes in self._cache.items()
                     },
                 },
-                ensure_ascii=False,
-                indent=2,
+                option=orjson.OPT_INDENT_2 | orjson.OPT_APPEND_NEWLINE,
             )
-            + "\n",
-            encoding="utf-8",
         )
 
     @property

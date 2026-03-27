@@ -1,7 +1,8 @@
 """Stats building for the aggregation pipeline."""
 
-import json
 from typing import Any
+
+import orjson
 
 from anibridge_mappings.core.aggregator import AggregationArtifacts
 from anibridge_mappings.core.graph import _BaseGraph
@@ -275,7 +276,9 @@ def render_stats_markdown(stats_payload: dict[str, Any]) -> str:
 
     lines.extend(["", "<details>", "<summary>Raw stats JSON</summary>", ""])
     lines.append("```json")
-    lines.append(json.dumps(stats_payload, ensure_ascii=False, indent=2))
+    lines.append(
+        orjson.dumps(stats_payload, option=orjson.OPT_INDENT_2).decode("utf-8")
+    )
     lines.append("```")
     lines.extend(["", "</details>", ""])
 

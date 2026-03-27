@@ -2,12 +2,13 @@
 
 import hashlib
 import importlib.metadata
-import json
 import re
 import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+import orjson
 
 from anibridge_mappings.core.graph import EpisodeMappingGraph, ProvenanceEvent
 
@@ -387,18 +388,18 @@ def write_provenance_payload(path: Path, payload: dict[str, Any]) -> None:
     ) as archive:
         archive.writestr(
             "manifest.json",
-            json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+            orjson.dumps(
+                manifest, option=orjson.OPT_INDENT_2 | orjson.OPT_APPEND_NEWLINE
+            ),
         )
         archive.writestr(
             "descriptor-index.json",
-            json.dumps(descriptor_index, ensure_ascii=False, indent=2) + "\n",
+            orjson.dumps(
+                descriptor_index, option=orjson.OPT_INDENT_2 | orjson.OPT_APPEND_NEWLINE
+            ),
         )
         for descriptor_path in sorted(descriptor_files):
             archive.writestr(
                 descriptor_path,
-                json.dumps(
-                    descriptor_files[descriptor_path],
-                    ensure_ascii=False,
-                    separators=(",", ":"),
-                ),
+                orjson.dumps(descriptor_files[descriptor_path]),
             )

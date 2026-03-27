@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
-import json
+
+import orjson
 
 from anibridge_mappings.core.graph import IdMappingGraph
 from anibridge_mappings.core.meta import SourceMeta, SourceType
@@ -77,7 +78,7 @@ def test_cached_metadata_loads_versioned_payload(tmp_path) -> None:
             "2": None,
         },
     }
-    source.cache_path.write_text(json.dumps(payload), encoding="utf-8")
+    source.cache_path.write_bytes(orjson.dumps(payload))
 
     loaded = source._load_cache()
     loaded_1 = loaded["1"]

@@ -1,12 +1,13 @@
 """ID and metadata source that ingests AnimeAggregations entries."""
 
 import asyncio
-import json
 import subprocess
 from collections import Counter
 from logging import getLogger
 from pathlib import Path
 from typing import Any
+
+import orjson
 
 from anibridge_mappings.core.graph import IdMappingGraph
 from anibridge_mappings.core.meta import MetaStore, SourceType
@@ -170,8 +171,8 @@ class AnimeAggregationsSource(IdMappingSource, MetadataSource):
         entries: list[dict[str, Any]] = []
         for path in sorted(anime_dir.glob("*.json")):
             try:
-                payload = json.loads(path.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
+                payload = orjson.loads(path.read_bytes())
+            except orjson.JSONDecodeError:
                 log.warning("Skipping invalid JSON file %s", path.name)
                 continue
 

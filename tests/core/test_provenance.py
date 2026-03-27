@@ -1,7 +1,7 @@
-import json
 import zipfile
 from datetime import UTC, datetime
 
+import orjson
 import pytest
 
 from anibridge_mappings.core.graph import EpisodeMappingGraph, ProvenanceContext
@@ -71,7 +71,7 @@ def test_build_validate_and_write_provenance_payload(tmp_path) -> None:
 
     with zipfile.ZipFile(output) as archive:
         assert set(archive.namelist()) >= {"manifest.json", "descriptor-index.json"}
-        manifest = json.loads(archive.read("manifest.json"))
+        manifest = orjson.loads(archive.read("manifest.json"))
         assert manifest["schema_version"] == "1.2.3"
 
 

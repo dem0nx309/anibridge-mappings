@@ -1,11 +1,11 @@
 """Module for the manami-project/anime-offline-database source."""
 
 import io
-import json
 import re
 from typing import ClassVar, Literal
 
 import aiohttp
+import orjson
 from pydantic import BaseModel, ConfigDict, Field
 from zstandard import ZstdDecompressor
 
@@ -64,7 +64,7 @@ class AnimeOfflineDatabaseSource(MetadataSource, IdMappingSource):
         with io.BytesIO(compressed_data) as bio, dctx.stream_reader(bio) as reader:
             decompressed_bytes = reader.read()
 
-        payload = json.loads(decompressed_bytes)
+        payload = orjson.loads(decompressed_bytes)
         raw_entries = payload.get("data")
         if not isinstance(raw_entries, list):
             raise RuntimeError("Invalid data format.")

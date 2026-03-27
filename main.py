@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import orjson
 from dotenv import load_dotenv
 from zstandard import ZstdCompressor
 
@@ -126,10 +127,13 @@ def write_payload(path: Path, payload: dict[str, Any], *, pretty: bool = True) -
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     if pretty:
-        rendered = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+        path.write_bytes(
+            orjson.dumps(
+                payload, option=orjson.OPT_INDENT_2 | orjson.OPT_APPEND_NEWLINE
+            )
+        )
     else:
-        rendered = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-    path.write_text(rendered, encoding="utf-8")
+        path.write_bytes(orjson.dumps(payload))
 
 
 def write_zstd(path: Path, payload: dict[str, Any]) -> None:
@@ -140,9 +144,7 @@ def write_zstd(path: Path, payload: dict[str, Any]) -> None:
         payload (dict[str, Any]): Serialized mapping payload.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode(
-        "utf-8"
-    )
+    data = orjson.dumps(payload)
     compressor = ZstdCompressor()
     path.write_bytes(compressor.compress(data))
 

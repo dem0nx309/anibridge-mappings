@@ -23,6 +23,7 @@ dependencies = [
     "pydantic>=2.12.5",
     "ruamel-yaml>=0.19.1",
     "zstandard>=0.25.0",
+    "orjson>=3.11.7",
 ]
 
 [project.urls]
