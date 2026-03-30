@@ -102,6 +102,12 @@ const indexOfValue = (
 
 const parseProvenanceZip = (content: ArrayBuffer): ProvenancePayload => {
   const files = unzipSync(new Uint8Array(content));
+  const compactBytes = files["provenance.json"];
+
+  if (compactBytes) {
+    return parseJson<ProvenancePayload>(compactBytes, "provenance.json");
+  }
+
   const manifestBytes = files["manifest.json"];
   const indexBytes = files["descriptor-index.json"];
 

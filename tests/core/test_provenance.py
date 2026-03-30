@@ -9,7 +9,6 @@ from anibridge_mappings.core.provenance import (
     _active_mapping_contributors,
     _active_ranges,
     _descriptor,
-    _descriptor_filename,
     _event_contributor,
     _event_payload,
     _mapping_contributors,
@@ -38,9 +37,6 @@ def _sample_graph() -> EpisodeMappingGraph:
 def test_descriptor_helpers() -> None:
     assert _descriptor("anidb", "1", None) == "anidb:1"
     assert _descriptor("anidb", "1", "R") == "anidb:1:R"
-    filename = _descriptor_filename("anidb:1:R")
-    assert filename.endswith(".json")
-    assert "anidb_1_r" in filename
 
 
 def test_event_helpers_extract_contributors() -> None:
@@ -64,21 +60,25 @@ def test_build_validate_and_write_provenance_payload(tmp_path) -> None:
     )
 
     validate_provenance_payload(payload)
-    assert payload["manifest"]["summary"]["events"] >= 2
+    assert payload["$meta"]["summary"]["events"] >= 1
+    assert payload["$meta"]["format"] == "anibridge.provenance.v2"
+    assert payload["dict"]["descriptors"] == ["anidb:1:R", "mal:2"]
+    assert len(payload["mappings"]) == 1
 
     output = tmp_path / "prov.zip"
     write_provenance_payload(output, payload)
 
     with zipfile.ZipFile(output) as archive:
-        assert set(archive.namelist()) >= {"manifest.json", "descriptor-index.json"}
-        manifest = orjson.loads(archive.read("manifest.json"))
-        assert manifest["schema_version"] == "1.2.3"
+        assert archive.namelist() == ["provenance.json"]
+        compact = orjson.loads(archive.read("provenance.json"))
+        assert compact["$meta"]["schema_version"] == "1.2.3"
+        assert compact["mappings"][0]["p"] is True
 
 
 def test_validate_payload_catches_mismatched_manifest() -> None:
     graph = _sample_graph()
     payload = build_provenance_payload(graph, schema_version="1.0.0")
-    payload["manifest"]["summary"]["descriptors"] = 999
+    payload["$meta"]["summary"]["descriptors"] = 999
 
     with pytest.raises(ValueError, match="descriptors mismatch"):
         validate_provenance_payload(payload)
