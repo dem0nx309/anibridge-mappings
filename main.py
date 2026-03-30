@@ -188,7 +188,7 @@ def main() -> None:
         provenance_payload = build_provenance_payload(artifacts.episode_graph)
         validate_provenance_payload(provenance_payload)
         write_provenance_payload(provenance_path, provenance_payload)
-        provenance_summary = provenance_payload["manifest"]["summary"]
+        provenance_summary = provenance_payload["$meta"]["summary"]
         log.info(
             "Wrote %s (%d descriptors, %d mappings, %d events)",
             provenance_path,
