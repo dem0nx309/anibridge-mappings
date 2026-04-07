@@ -16,15 +16,14 @@ maintainers = [
 ]
 
 dependencies = [
-    "anibridge-utils>=0.2.0b3",
     "aiohttp>=3.13.2",
-    "anibridge-utils>=0.2.0b4",
+    "anibridge-utils>=0.2.0",
     "dotenv>=0.9.9",
     "lxml>=6.0.2",
+    "orjson>=3.11.7",
     "pydantic>=2.12.5",
     "ruamel-yaml>=0.19.1",
     "zstandard>=0.25.0",
-    "orjson>=3.11.7",
 ]
 
 [project.urls]
