@@ -107,6 +107,16 @@ jobs:
           restore-keys: |
             ${{ steps.cache-vars.outputs.cache_prefix }}
 
+      - name: Compute release vars
+        id: release-vars
+        run: |
+          set -euo pipefail
+          uv_version="${{ steps.cache-vars.outputs.uv_version }}"
+          major="${uv_version%%.*}"
+          echo "release_date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+          echo "release_major=v$major" >> "$GITHUB_OUTPUT"
+          echo "release_tag=v$major" >> "$GITHUB_OUTPUT"
+
       - name: Build mappings
         env:
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
