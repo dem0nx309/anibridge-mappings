@@ -89,26 +89,23 @@ jobs:
         id: cache-vars
         run: |
           set -euo pipefail
-          echo "cache_month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
-          echo "uv_version=$(uv version --short)" >> "$GITHUB_OUTPUT"
+          uv_version="$(uv version --short)"
+          cache_month="$(date -u +%Y-%m)"
+          cache_prefix="meta-${uv_version}-${cache_month}-"
+          cache_key="${cache_prefix}${GITHUB_RUN_ID}"
 
-      - name: Cache metadata
-        uses: actions/cache@v5
+          echo "uv_version=$uv_version" >> "$GITHUB_OUTPUT"
+          echo "cache_month=$cache_month" >> "$GITHUB_OUTPUT"
+          echo "cache_prefix=$cache_prefix" >> "$GITHUB_OUTPUT"
+          echo "cache_key=$cache_key" >> "$GITHUB_OUTPUT"
+
+      - name: Restore metadata cache
+        uses: actions/cache/restore@v4
         with:
           path: data/meta
-          key: meta-${{ steps.cache-vars.outputs.uv_version }}-${{ steps.cache-vars.outputs.cache_month }}
+          key: ${{ steps.cache-vars.outputs.cache_key }}
           restore-keys: |
-            meta-${{ steps.cache-vars.outputs.uv_version }}-${{ steps.cache-vars.outputs.cache_month }}
-
-      - name: Compute release vars
-        id: release-vars
-        run: |
-          set -euo pipefail
-          uv_version="${{ steps.cache-vars.outputs.uv_version }}"
-          major="${uv_version%%.*}"
-          echo "release_date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
-          echo "release_major=v$major" >> "$GITHUB_OUTPUT"
-          echo "release_tag=v$major" >> "$GITHUB_OUTPUT"
+            ${{ steps.cache-vars.outputs.cache_prefix }}
 
       - name: Build mappings
         env:
@@ -117,6 +114,42 @@ jobs:
         run: |
           set -euo pipefail
           uv run ./main.py --out "$OUTPUT_DIR" --compress --stats --provenance
+
+      - name: Save metadata cache
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: actions/cache/save@v4
+        with:
+          path: data/meta
+          key: ${{ steps.cache-vars.outputs.cache_key }}
+
+      - name: Clean up old monthly caches
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PREFIX: ${{ steps.cache-vars.outputs.cache_prefix }}
+          KEEP_KEY: ${{ steps.cache-vars.outputs.cache_key }}
+        run: |
+          set -euo pipefail
+
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${REPO}/actions/caches?per_page=100&key=${PREFIX}" \
+          | jq -r --arg KEEP_KEY "$KEEP_KEY" '
+              .actions_caches
+              | sort_by(.last_accessed_at, .created_at)
+              | reverse
+              | map(select(.key != $KEEP_KEY))
+              | .[].id
+            ' \
+          | while read -r cache_id; do
+              [ -n "$cache_id" ] || continue
+              echo "Deleting old cache id=$cache_id"
+              gh api \
+                --method DELETE \
+                -H "Accept: application/vnd.github+json" \
+                "/repos/${REPO}/actions/caches/${cache_id}"
+            done
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v6
