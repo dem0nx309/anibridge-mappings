@@ -27525,6 +27525,13 @@ anilist:188943:
 anilist:188973:
   mal:61387:
     "1": "1"
+anilist:189046:
+  anidb:19242:R:
+    "1-19": "1-19"
+  ^tmdb_show:65942:s1:
+    "1-19": "67-85"
+  ^tvdb_show:305089:s1:
+    "1-19": "1-19|0" # fix mismatch to s1
 anilist:189068:
   anidb:19434:R:
     "1": "1"
@@ -28330,6 +28337,9 @@ mal:171099:
     "7-8": "1-2"
   anilist:21438:
     "5-6": "1-2"
+^tvdb_show:305089:s1: # fix mismatch to s4
+  anilist:189046:
+    "1-19": "1-19|0"
 ^tvdb_show:354198:s0:
   anilist:151384:
     "9": "1-4|-4"
