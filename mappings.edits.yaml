@@ -1200,6 +1200,11 @@ anilist:845:
 anilist:848:
   tvdb_show:80819:s0:
     "1": "1"
+^anilist:849: # do not change, yes I mean you
+  tmdb_show:42511:s1:
+    "1-14": "1-14|0"
+  tvdb_show:79414:s1:
+    "1-14": "1-14|0"
 anilist:864:
   tmdb_show:20111:s0:
     "1-2": "2-3"
@@ -5693,6 +5698,13 @@ anilist:4353:
 anilist:4361:
   tmdb_show:24722:s0:
     "1-6": "1-6"
+^anilist:4382: # do not change, I mean it
+  tmdb_show:42511:s1:
+    "1-28": "1-28|0"
+  tvdb_show:79414:s1:
+    "1-14": "1-14|0"
+  tvdb_show:79414:s2:
+    "15-28": "1-14|0"
 anilist:4385:
   tvdb_show:112641:s0:
     "1": "1"
@@ -7280,6 +7292,9 @@ anilist:7296:
     "1": "1"
   mal:7296:
     "1": "1"
+^anilist:7311: # do not change, this is intentional
+  tvdb_show:79414:s0:
+    "1": "1|0"
 anilist:7322:
   tvdb_show:102471:s0:
     "1-12": "1-12"
@@ -28294,6 +28309,22 @@ mal:171099:
     "1": "1"
   tvdb_show:413522:s0:
     "1": "3"
+^tmdb_show:42511:s1: # do not change, no warning shots
+  anilist:849:
+    "1-14": "1-14|0"
+  anilist:4382:
+    "1-28": "1-28|0"
+^tvdb_show:79414:s0: # do not change, I'll kick you in the shins
+  anilist:7311:
+    "1": "1|0"
+^tvdb_show:79414:s1: # do not change, or else
+  anilist:849:
+    "1-14": "1-14|0"
+  anilist:4382:
+    "1-14": "1-14|0"
+^tvdb_show:79414:s2: # that's it, I'm gettin' me mallet!
+  anilist:4382:
+    "1-14": "15-28|0"
 ^tvdb_show:262856:s0:
   anilist:21437:
     "7-8": "1-2"
