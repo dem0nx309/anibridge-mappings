@@ -29,7 +29,7 @@ def test_base_graph_node_and_edge_operations() -> None:
     assert not graph.has_node(c)
 
 
-def test_episode_graph_provenance_and_forced_edge_state() -> None:
+def test_episode_graph_provenance_and_edit_edge_state() -> None:
     graph = EpisodeMappingGraph()
     left = ("anidb", "1", "R", "1-3")
     right = ("mal", "2", None, "1-3")
@@ -37,13 +37,13 @@ def test_episode_graph_provenance_and_forced_edge_state() -> None:
     with graph.provenance_context(
         ProvenanceContext(stage="stage", actor="actor", details={"a": 1})
     ):
-        graph.add_edge(left, right, details={"forced": True})
+        graph.add_edge(left, right, details={"edit": True})
 
-    assert graph.is_forced_edge(left, right)
+    assert graph.is_edit_edge(left, right)
 
     graph.remove_edge(left, right)
     assert not graph.has_edge(left, right)
-    assert not graph.is_forced_edge(left, right)
+    assert not graph.is_edit_edge(left, right)
 
     items = graph.provenance_items()
     assert len(items) == 1

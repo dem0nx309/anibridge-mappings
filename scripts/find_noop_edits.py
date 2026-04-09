@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 from ruamel.yaml import YAML
 
 from anibridge_mappings.core.aggregator import default_aggregator
-from anibridge_mappings.core.edits import _build_scope_index, _parse_edit_descriptor
+from anibridge_mappings.core.edits import _build_scope_index, _parse_descriptor
 from anibridge_mappings.core.graph import EpisodeMappingGraph, ProvenanceContext
 from anibridge_mappings.core.inference import infer_episode_mappings
 
@@ -112,16 +112,14 @@ def _get_existing_edges(
 def find_noop_edits(
     graph: EpisodeMappingGraph,
     edits_data: dict,
-) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+) -> list[tuple[str, str]]:
     """Identify no-op edits by comparing against the pre-edit graph.
 
     Returns:
-        Tuple of (regular_noops, forced_noops) where each is a list of
-        (source_descriptor, target_descriptor) pairs.
+        List of (source_descriptor, target_descriptor) pairs that are no-ops.
     """
     scope_index = _build_scope_index(graph)
-    regular_noops: list[tuple[str, str]] = []
-    forced_noops: list[tuple[str, str]] = []
+    noops: list[tuple[str, str]] = []
 
     for src_desc, targets in edits_data.items():
         if isinstance(src_desc, str) and src_desc.startswith("$"):
@@ -129,15 +127,14 @@ def find_noop_edits(
         if not isinstance(targets, dict):
             continue
 
-        source, source_forced, _source_norm = _parse_edit_descriptor(str(src_desc))
+        source = _parse_descriptor(str(src_desc))
 
         for tgt_desc, config in targets.items():
             tgt_desc_str = str(tgt_desc)
             if tgt_desc_str.startswith("$"):
                 continue
 
-            target, target_forced, _target_norm = _parse_edit_descriptor(tgt_desc_str)
-            forced = source_forced or target_forced
+            target = _parse_descriptor(tgt_desc_str)
 
             config = config or {}
             edit_ranges: set[tuple[str, str]] = set()
@@ -150,12 +147,9 @@ def find_noop_edits(
             existing_edges = _get_existing_edges(graph, source, target, scope_index)
 
             if edit_ranges == existing_edges:
-                if forced:
-                    forced_noops.append((str(src_desc), tgt_desc_str))
-                else:
-                    regular_noops.append((str(src_desc), tgt_desc_str))
+                noops.append((str(src_desc), tgt_desc_str))
 
-    return regular_noops, forced_noops
+    return noops
 
 
 def remove_noop_edits(
@@ -207,35 +201,28 @@ def _find_key(mapping: dict, target: str) -> str | None:
 
 
 def print_report(
-    regular_noops: list[tuple[str, str]],
-    forced_noops: list[tuple[str, str]],
+    noops: list[tuple[str, str]],
     total_pairs: int,
     dry_run: bool,
 ) -> None:
     """Print a summary report of findings."""
-    effective = total_pairs - len(regular_noops) - len(forced_noops)
+    effective = total_pairs - len(noops)
 
     print(f"\n{'=' * 60}")
     print("No-Op Edit Detection Report")
     print(f"{'=' * 60}")
     print(f"Total source→target pairs scanned:  {total_pairs}")
     print(f"Effective edits (kept):              {effective}")
-    print(f"Regular no-op edits:                 {len(regular_noops)}")
-    print(f"Forced no-op edits (kept):           {len(forced_noops)}")
+    print(f"No-op edits:                         {len(noops)}")
     print(f"{'=' * 60}")
 
-    if regular_noops:
+    if noops:
         action = "Would remove" if dry_run else "Removed"
-        print(f"\n{action} {len(regular_noops)} regular no-op edit(s):")
-        for src, tgt in sorted(regular_noops):
+        print(f"\n{action} {len(noops)} no-op edit(s):")
+        for src, tgt in sorted(noops):
             print(f"  {src} → {tgt}")
 
-    if forced_noops:
-        print(f"\nKept {len(forced_noops)} forced no-op edit(s) (^ prefix):")
-        for src, tgt in sorted(forced_noops):
-            print(f"  {src} → {tgt}")
-
-    if not regular_noops and not forced_noops:
+    if not noops:
         print("\nAll edits are effective — nothing to remove.")
 
     print()
@@ -289,14 +276,14 @@ async def main() -> None:
 
     # Detect no-ops
     log.info("Scanning edits for no-ops...")
-    regular_noops, forced_noops = find_noop_edits(episode_graph, edits_data)
+    noops = find_noop_edits(episode_graph, edits_data)
 
     # Report
-    print_report(regular_noops, forced_noops, total_pairs, args.dry_run)
+    print_report(noops, total_pairs, args.dry_run)
 
     # Remove + write back
-    if regular_noops and not args.dry_run:
-        removed = remove_noop_edits(edits_data, regular_noops)
+    if noops and not args.dry_run:
+        removed = remove_noop_edits(edits_data, noops)
         with edits_path.open("w") as f:
             yaml.dump(edits_data, f)
         log.info(
@@ -304,7 +291,7 @@ async def main() -> None:
             removed,
             edits_path,
         )
-    elif regular_noops:
+    elif noops:
         log.info("Dry run — no changes written.")
 
 

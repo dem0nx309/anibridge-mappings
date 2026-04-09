@@ -131,18 +131,6 @@ anilist:12345: # Some comment about this mapping
     "1-12": "1-12"
 ```
 
-Even if you define a mapping override in the mappings.edits.yaml file, this on its own does not guarantee persistence in the output. Overrides must still be valid according to the validation rules in the pipeline (e.g. episode counts must align with metadata) and mapping edits have a chance of being overridden by inferred mappings from other sources if they conflict. However, if you want to explicitly preserve an override, ignoring potential conflicts and validation issues, prepend the source descriptor or target descriptor with `^`:
-
-```yaml
-^anilist:12345:
-  tvdb_show:98765:s1:
-    "1-12": "1-12"
-
-anilist:12345:
-  ^tvdb_show:98765:s1:
-    "1-12": "1-12"
-```
-
 When the pipeline runs, it removes any existing mappings between the specified source and target scopes and replaces them with your entries.
 
 ## Running the Pipeline

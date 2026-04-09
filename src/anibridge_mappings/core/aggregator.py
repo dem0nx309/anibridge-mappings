@@ -286,9 +286,9 @@ class MappingAggregator:
             if episode_graph.has_node(source_node) and episode_graph.has_node(
                 target_node
             ):
-                if episode_graph.is_forced_edge(source_node, target_node):
+                if episode_graph.is_edit_edge(source_node, target_node):
                     log.debug(
-                        "Skipping prune for forced edge: %s -- %s because: %s",
+                        "Skipping prune for edit edge: %s -- %s because: %s",
                         source_node,
                         target_node,
                         issue.message,

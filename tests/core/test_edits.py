@@ -6,19 +6,15 @@ from anibridge_mappings.core.edits import (
     EditError,
     _build_scope_index,
     _parse_descriptor,
-    _parse_edit_descriptor,
     apply_edits,
     load_edits,
 )
 from anibridge_mappings.core.graph import EpisodeMappingGraph
 
 
-def test_parse_descriptor_and_forced_marker() -> None:
+def test_parse_descriptor_basic() -> None:
     assert _parse_descriptor("anidb:1") == ("anidb", "1", "R")
-    scope, forced, descriptor = _parse_edit_descriptor("^mal:2")
-    assert scope == ("mal", "2", None)
-    assert forced is True
-    assert descriptor == "mal:2"
+    assert _parse_descriptor("mal:2") == ("mal", "2", None)
 
 
 def test_apply_edits_replaces_edges() -> None:
@@ -54,12 +50,12 @@ def test_build_scope_index() -> None:
     assert index[("anidb", "1", "R")] == {node}
 
 
-def test_parse_descriptor_errors_and_forced_prefix_validation() -> None:
+def test_parse_descriptor_errors() -> None:
     with pytest.raises(EditError):
         _parse_descriptor("bad")
 
     with pytest.raises(EditError):
-        _parse_edit_descriptor("^")
+        _parse_descriptor("")
 
 
 def test_load_edits_missing_file_returns_empty_dict(tmp_path: Path) -> None:

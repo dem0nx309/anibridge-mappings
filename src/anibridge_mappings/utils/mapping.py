@@ -25,7 +25,7 @@ type SourceTargetMap = dict[
     dict[TargetNode, dict[str, set[str]]],
 ]
 type SortPart = tuple[int, int | str]
-type ProviderScopeSortKey = tuple[int, str, SortPart, SortPart, int]
+type ProviderScopeSortKey = tuple[int, str, SortPart, SortPart]
 
 
 def parse_descriptor(descriptor: str) -> tuple[str, str, str | None]:
@@ -272,18 +272,15 @@ def _format_target_value(start: int, end: int, ratio: int | None) -> str:
 
 def provider_scope_sort_key(k: str) -> ProviderScopeSortKey:
     """Return a sort key for provider-scoped mapping descriptors."""
-    forced = k.startswith("^")
-    normalized = k.removeprefix("^") if forced else k
-    forced_key = 1 if forced else 0
-    if normalized.startswith("$"):
-        return (0, normalized, (0, ""), (0, ""), forced_key)
+    if k.startswith("$"):
+        return (0, k, (0, ""), (0, ""))
 
     match = re.match(
         r"^(?P<provider>[a-zA-Z_][a-zA-Z0-9_]*):(?P<id>[^:]+)(?::(?P<scope>[^:]+))?$",
-        normalized,
+        k,
     )
     if not match:
-        return (2, normalized, (0, ""), (0, ""), forced_key)
+        return (2, k, (0, ""), (0, ""))
 
     provider = cast(str, match.group("provider"))
     id_str = cast(str, match.group("id"))
@@ -301,7 +298,7 @@ def provider_scope_sort_key(k: str) -> ProviderScopeSortKey:
             scope_match = re.match(r"^s([0-9]+)$", scope)
             scope_key = (2, int(scope_match.group(1))) if scope_match else (3, scope)
 
-    return (1, provider, id_key, scope_key, forced_key)
+    return (1, provider, id_key, scope_key)
 
 
 def ordered_payload(d: dict[str, Any]) -> dict[str, Any]:

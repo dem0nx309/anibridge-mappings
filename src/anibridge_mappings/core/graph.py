@@ -422,20 +422,20 @@ class EpisodeMappingGraph(_BaseGraph[EpisodeNode]):
         items.sort(key=lambda item: (self._node_key(item[0]), self._node_key(item[1])))
         return items
 
-    def is_forced_edge(self, a: EpisodeNode, b: EpisodeNode) -> bool:
-        """Return True when the active edge state was added by a forced edit."""
+    def is_edit_edge(self, a: EpisodeNode, b: EpisodeNode) -> bool:
+        """Return True when the active edge state was added by an edit."""
         if not self.has_edge(a, b):
             return False
 
-        forced = False
+        edit = False
         for event in self._provenance.get(self._edge_key(a, b), []):
             if not event.effective:
                 continue
             if event.action == "remove":
-                forced = False
+                edit = False
                 continue
-            forced = bool(event.details and event.details.get("forced"))
-        return forced
+            edit = bool(event.details and event.details.get("edit"))
+        return edit
 
     def add_transitive_edges(
         self,
