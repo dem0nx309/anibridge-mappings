@@ -24,7 +24,7 @@ class BaseTvdbSource(CachedMetadataSource):
     API_KEY_ENV = "TVDB_API_KEY"
     API_PIN_ENV = "TVDB_PIN"
     RECENT_AIR_DAYS = 180
-    CACHE_VERSION = 3
+    CACHE_VERSION = 4
 
     def __init__(self, concurrency: int = 6) -> None:
         """Initialize the TVDB source with a specific concurrency level.
@@ -109,10 +109,7 @@ class BaseTvdbSource(CachedMetadataSource):
                     raise RuntimeError(f"TVDB login failed: {exc}") from exc
 
                 payload_data: dict[str, Any] = await response.json()
-                data = (
-                    payload_data.get("data") if isinstance(payload_data, dict) else {}
-                )
-                token = data.get("token") if isinstance(data, dict) else None
+                token = (payload_data.get("data") or {}).get("token")
                 if not token:
                     raise RuntimeError("TVDB login response missing token")
                 self._token = token
@@ -151,40 +148,21 @@ class BaseTvdbSource(CachedMetadataSource):
         return f"s{season_number}"
 
     @staticmethod
-    def _subset_scope_meta(
-        scope_meta: dict[str | None, SourceMeta], scope: str | None
-    ) -> dict[str | None, SourceMeta] | None:
-        """Filter scope metadata to a single scope when requested."""
-        if scope is None:
-            return scope_meta
-        meta = scope_meta.get(scope)
-        if meta is None:
-            return None
-        return {scope: meta}
+    def _parse_runtime(value: int | None) -> int | None:
+        """Return the runtime if positive, otherwise None."""
+        return value if value and value > 0 else None
 
     @staticmethod
-    def _parse_runtime(value: Any) -> int | None:
-        """Normalize a runtime value into minutes."""
-        if isinstance(value, (int, float)):
-            return int(value) if value > 0 else None
-        if isinstance(value, str) and value.isdigit():
-            parsed = int(value)
-            return parsed if parsed > 0 else None
-        return None
-
-    @staticmethod
-    def _parse_year(value: Any) -> int | None:
-        """Parse a year from a TVDB date-like field."""
-        if isinstance(value, int):
-            return value
-        if isinstance(value, str) and value[:4].isdigit():
+    def _parse_year(value: str | None) -> int | None:
+        """Parse a year from a TVDB date string."""
+        if value and value[:4].isdigit():
             return int(value[:4])
         return None
 
     def _build_show_scope_meta(
         self,
         episodes: Iterable[dict[str, Any]],
-        runtime: Any | None,
+        runtime: int | None,
         titles: Iterable[object] = (),
     ) -> dict[str | None, SourceMeta]:
         """Build per-season metadata from TVDB episodes."""
@@ -193,8 +171,6 @@ class BaseTvdbSource(CachedMetadataSource):
         last_air_dates: dict[int, datetime] = {}
         has_finale: dict[int, bool] = {}
         for episode in episodes:
-            if not isinstance(episode, dict):
-                continue
             season_number = self._extract_season_number(episode)
             if season_number is None:
                 continue
@@ -244,46 +220,24 @@ class BaseTvdbSource(CachedMetadataSource):
     @staticmethod
     def _extract_season_number(episode: dict[str, Any]) -> int | None:
         """Extract a season number from a TVDB episode entry."""
-        season = (
-            episode.get("seasonNumber")
-            or episode.get("airedSeason")
-            or episode.get("season")
-            or episode.get("season_number")
-        )
-        if isinstance(season, int):
-            return season
-        if isinstance(season, str) and season.isdigit():
-            return int(season)
-        return None
+        return episode.get("seasonNumber")
 
     @staticmethod
     def _extract_air_year(episode: dict[str, Any]) -> int | None:
         """Extract a year from a TVDB episode entry."""
-        air_date = (
-            episode.get("airDateUtc")
-            or episode.get("aired")
-            or episode.get("firstAired")
-            or episode.get("airDate")
-            or episode.get("airedDate")
-        )
-        if isinstance(air_date, str) and air_date[:4].isdigit():
-            return int(air_date[:4])
+        aired = episode.get("aired")
+        if aired and aired[:4].isdigit():
+            return int(aired[:4])
         return None
 
     @staticmethod
     def _extract_air_date(episode: dict[str, Any]) -> datetime | None:
         """Extract a UTC datetime from a TVDB episode entry."""
-        air_date = (
-            episode.get("airDateUtc")
-            or episode.get("aired")
-            or episode.get("firstAired")
-            or episode.get("airDate")
-            or episode.get("airedDate")
-        )
-        if not isinstance(air_date, str) or not air_date:
+        aired = episode.get("aired")
+        if not aired:
             return None
 
-        text = air_date.strip().replace("Z", "+00:00")
+        text = aired.strip().replace("Z", "+00:00")
         try:
             parsed = datetime.fromisoformat(text)
         except ValueError:
@@ -298,12 +252,8 @@ class BaseTvdbSource(CachedMetadataSource):
     @staticmethod
     def _extract_finale_type(episode: dict[str, Any]) -> str | None:
         """Extract a finale type label from a TVDB episode entry."""
-        raw = (
-            episode.get("finaleType")
-            or episode.get("finale_type")
-            or episode.get("seriesFinaleType")
-        )
-        if not isinstance(raw, str):
+        raw = episode.get("finaleType")
+        if not raw:
             return None
         text = raw.strip().lower()
         if text in {"season", "series"}:
@@ -312,18 +262,16 @@ class BaseTvdbSource(CachedMetadataSource):
 
     def _build_movie_meta(
         self,
-        runtime: Any,
-        release_date: Any,
+        runtime: int | None,
+        release_date: str | None,
         titles: Iterable[object] = (),
     ) -> SourceMeta:
         """Build a movie metadata payload from TVDB fields."""
-        duration = self._parse_runtime(runtime)
-        start_year = self._parse_year(release_date)
         return SourceMeta(
             type=SourceType.MOVIE,
             episodes=1,
-            duration=duration if duration and duration > 0 else None,
-            start_year=start_year,
+            duration=self._parse_runtime(runtime),
+            start_year=self._parse_year(release_date),
             titles=normalize_titles(titles),
         )
 
@@ -331,15 +279,13 @@ class BaseTvdbSource(CachedMetadataSource):
     def _extract_titles(data: dict[str, Any]) -> tuple[str, ...]:
         """Extract a best-effort list of title variants from a TVDB payload."""
         candidates: list[str] = []
-        if isinstance(data.get("name"), str):
-            candidates.append(data["name"])
-        aliases = data.get("aliases")
-        if isinstance(aliases, list):
-            for alias in aliases:
-                if isinstance(alias, str):
-                    candidates.append(alias)
-                elif isinstance(alias, dict):
-                    candidates.extend(alias.get("name"))
+        name = data.get("name")
+        if name:
+            candidates.append(name)
+        for alias in data.get("aliases") or []:
+            alias_name = alias.get("name")
+            if alias_name:
+                candidates.append(alias_name)
         return normalize_titles(candidates)
 
 
@@ -367,9 +313,7 @@ class TvdbShowSource(BaseTvdbSource):
         """Fetch TVDB metadata for a single entry."""
         log.debug("Fetching TVDB metadata for %s (season scope: %s)", entry_id, scope)
         scope_meta, cacheable = await self._get_or_fetch_show_meta(session, entry_id)
-        if scope_meta is None:
-            return entry_id, None, cacheable
-        return entry_id, self._subset_scope_meta(scope_meta, scope), cacheable
+        return entry_id, scope_meta, cacheable
 
     async def _get_or_fetch_show_meta(
         self,
@@ -385,12 +329,12 @@ class TvdbShowSource(BaseTvdbSource):
             self._show_cache[base_id] = None
             return None, cacheable
 
-        data = payload.get("data") if isinstance(payload, dict) else None
-        if not isinstance(data, dict):
+        data = payload.get("data")
+        if not data:
             self._show_cache[base_id] = None
             return None, cacheable
 
-        episodes = data.get("episodes") if isinstance(data, dict) else None
+        episodes = data.get("episodes")
         runtime = data.get("averageRuntime") or data.get("runtime")
         scope_meta = self._build_show_scope_meta(
             episodes or [],
@@ -429,19 +373,10 @@ class TvdbMovieSource(BaseTvdbSource):
         if payload is None:
             return entry_id, None, cacheable
 
-        data = payload.get("data") if isinstance(payload, dict) else None
-        if not isinstance(data, dict):
-            data = payload if isinstance(payload, dict) else {}
+        data = payload["data"]
 
-        runtime = (
-            data.get("runtime") or data.get("runtimeMinutes") or data.get("length")
-        )
-        release_date = (
-            data.get("releaseDate")
-            or data.get("released")
-            or data.get("firstAired")
-            or data.get("year")
-        )
+        runtime = data.get("runtime")
+        release_date = data.get("year")
 
         meta = self._build_movie_meta(
             runtime,
