@@ -55,13 +55,42 @@ const getMappings = async (requestUrl?: string): Promise<MappingsPayload> => {
           "../../data/out/mappings.json",
           requestUrl,
         );
-        const res = await fetch(localUrl.toString(), {
-          headers: { Accept: "application/json" },
-        });
+        let res: Response | null = null;
+        try {
+          const localResponse = await fetch(localUrl.toString(), {
+            headers: { Accept: "application/json" },
+          });
+          if (localResponse.ok) {
+            res = localResponse;
+          } else {
+            console.warn(
+              "Local mappings.json fetch returned non-OK status; falling back to release artifact",
+              {
+                status: localResponse.status,
+                statusText: localResponse.statusText,
+                url: localUrl.toString(),
+              },
+            );
+          }
+        } catch (error) {
+          console.warn(
+            "Local mappings.json fetch failed; falling back to release artifact",
+            {
+              url: localUrl.toString(),
+              error: error instanceof Error ? error.message : String(error),
+            },
+          );
+        }
+
+        if (!res) {
+          res = await fetch(MAPPINGS_URL, {
+            headers: { Accept: "application/json" },
+          });
+        }
 
         if (!res.ok) {
           throw new Error(
-            `Failed to fetch local mappings: ${res.status} ${res.statusText}`,
+            `Failed to fetch mappings: ${res.status} ${res.statusText}`,
           );
         }
 
@@ -99,9 +128,38 @@ app.get("/data/provenance.zip", async (c) => {
         "../../data/out/provenance.zip",
         c.req.url,
       );
-      const upstream = await fetch(localUrl.toString(), {
-        headers: { Accept: "application/zip" },
-      });
+      let upstream: Response | null = null;
+      try {
+        const localResponse = await fetch(localUrl.toString(), {
+          headers: { Accept: "application/zip" },
+        });
+        if (localResponse.ok) {
+          upstream = localResponse;
+        } else {
+          console.warn(
+            "Local provenance.zip fetch returned non-OK status; falling back to release artifact",
+            {
+              status: localResponse.status,
+              statusText: localResponse.statusText,
+              url: localUrl.toString(),
+            },
+          );
+        }
+      } catch (error) {
+        console.warn(
+          "Local provenance.zip fetch failed; falling back to release artifact",
+          {
+            url: localUrl.toString(),
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
+      }
+
+      if (!upstream) {
+        upstream = await fetch(PROVENANCE_URL, {
+          headers: { Accept: "application/zip" },
+        });
+      }
 
       const headers = new Headers(upstream.headers);
       headers.set("Access-Control-Allow-Origin", "*");
