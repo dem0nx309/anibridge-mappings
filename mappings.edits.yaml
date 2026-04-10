@@ -1,5 +1,5 @@
 $schema:
-  version: 3.0.2
+  version: 3.0.0
 anilist:5:
   tvdb_show:76885:s0:
     "1": "3"
@@ -1185,8 +1185,6 @@ anilist:821:
   tmdb_show:40424:s0:
     "1": "3"
 anilist:822:
-  tmdb_movie:277090:
-    "1-2": "1|2"
   tmdb_show:40424:s0:
     "1-2": "1-2"
   tvdb_show:70900:s0:
@@ -1554,7 +1552,9 @@ anilist:1047:
     "1": "1"
   mal:1047:
     "1": "1"
-  tmdb_movie:10840:
+  tmdb_movie:1658826:
+    "1": "1"
+  tvdb_movie:18254:
     "1": "1"
 anilist:1056:
   anidb:1255:R:
@@ -2046,8 +2046,6 @@ anilist:1367:
   tvdb_show:72454:s0:
     "1": "12"
 anilist:1368:
-  tmdb_movie:1041790:
-    "1": "1"
   tvdb_show:72454:s0:
     "1": "15"
 anilist:1370:
@@ -2892,9 +2890,6 @@ anilist:1860:
 anilist:1861:
   imdb_movie:tt4086028:
     "1": "1"
-anilist:1867:
-  tmdb_movie:301739:
-    "1-2": "1|2"
 anilist:1872:
   tvdb_show:307696:s1:
     "1-26": "1-26"
@@ -3037,8 +3032,6 @@ anilist:1958:
     "1": "1"
   mal:1958:
     "1": "1"
-  tmdb_movie:449412:
-    "1": "1"
 anilist:1960:
   tvdb_show:167921:s1:
     "1-76": "1-76"
@@ -3147,9 +3140,6 @@ anilist:2045:
 anilist:2046:
   imdb_movie:tt0290730:
     "1": "1"
-anilist:2051:
-  tmdb_movie:851716:
-    "1-5": "1|5"
 anilist:2053:
   imdb_movie:tt2302563:
     "1": "1"
@@ -3265,9 +3255,6 @@ anilist:2096:
     "1": "1"
   tmdb_movie:619472:
     "1": "1"
-anilist:2097:
-  tmdb_movie:275785:
-    "1-2": "1|2"
 anilist:2101:
   imdb_movie:tt21048702:
     "1": "1"
@@ -3394,7 +3381,7 @@ anilist:2199:
   tmdb_movie:77859:
     "1": "1"
 anilist:2202:
-  tmdb_movie:42137:
+  tmdb_movie:1531453:
     "1": "1"
   tvdb_show:79765:s0:
     "1-22": "1-22"
@@ -3876,22 +3863,16 @@ anilist:2511:
   tvdb_show:251582:s0:
     "1": "2"
 anilist:2512:
-  tmdb_movie:1177702:
-    "1": "1"
   tmdb_show:30983:s0:
     "1": "2"
   tvdb_show:72454:s0:
     "1": "7"
 anilist:2514:
-  tmdb_movie:1084338:
-    "1": "1"
   tmdb_show:30983:s0:
     "1": "4"
   tvdb_show:72454:s0:
     "1": "11"
 anilist:2515:
-  tmdb_movie:1221942:
-    "1": "1"
   tmdb_show:30983:s0:
     "1": "6"
   tvdb_show:72454:s0:
@@ -4016,7 +3997,7 @@ anilist:2616:
     "1": "1"
   mal:2616:
     "1": "1"
-  tmdb_movie:54041:
+  tvdb_movie:98341:
     "1": "1"
 anilist:2617:
   tmdb_movie:40576:
@@ -4217,9 +4198,9 @@ anilist:2716:
   tvdb_show:373748:s1:
     "2-33": "1-32"
 anilist:2724:
-  mal:2724:
+  anidb:2780:R:
     "1": "1"
-  tmdb_movie:283069:
+  mal:2724:
     "1": "1"
 anilist:2725:
   imdb_movie:tt4126990:
@@ -4440,8 +4421,6 @@ anilist:2897:
   anidb:2675:R:
     "1": "1"
   imdb_movie:tt8927362:
-    "1": "1"
-  tmdb_movie:991317:
     "1": "1"
 anilist:2899:
   tmdb_movie:788115:
@@ -5342,7 +5321,9 @@ anilist:3816:
 anilist:3817:
   imdb_movie:tt2961122:
     "1": "1"
-  tmdb_movie:126953:
+  tmdb_movie:441707:
+    "1": "1"
+  tvdb_movie:192535:
     "1": "1"
 anilist:3818:
   anidb:3966:R:
@@ -5456,8 +5437,12 @@ anilist:3915:
   tmdb_movie:379830:
     "1-61": "1|61"
 anilist:3931:
+  tmdb_movie:19263:
+    "1": "1"
   tmdb_show:40424:s0:
     "1": "6"
+  tvdb_movie:104420:
+    "1": "1"
 anilist:3952:
   tvdb_show:76695:s0:
     "1-2": "18-19"
@@ -5613,9 +5598,6 @@ anilist:4150:
 anilist:4156:
   tvdb_show:81007:s0:
     "1": "1"
-anilist:4158:
-  tmdb_movie:629288:
-    "1": "1"
 anilist:4162:
   tvdb_show:80054:s0:
     "1": "21"
@@ -5691,9 +5673,6 @@ anilist:4280:
 anilist:4282:
   tvdb_show:82099:s1:
     "1": "5"
-anilist:4298:
-  tmdb_movie:320383:
-    "1-6": "1|6"
 anilist:4312:
   imdb_movie:tt0456981:
     "1": "1"
@@ -6086,7 +6065,7 @@ anilist:5060:
   tmdb_show:35138:s2:
     "27-52": "1-26"
 anilist:5065:
-  tmdb_movie:776234:
+  anidb:5587:S:
     "1": "1"
   tmdb_show:43066:s0:
     "1": "1"
@@ -6181,8 +6160,12 @@ anilist:5225:
   tvdb_show:71863:s0:
     "1": "1"
 anilist:5228:
+  tmdb_movie:1390595:
+    "1": "1"
   tmdb_show:40424:s0:
     "1": "7"
+  tvdb_movie:45153:
+    "1": "1"
 anilist:5244:
   tmdb_show:53787:s0:
     "1": "1"
@@ -6258,8 +6241,6 @@ anilist:5333:
   tvdb_show:80158:s0:
     "1-6": "7-12"
 anilist:5348:
-  tmdb_movie:1230946:
-    "1": "1"
   tvdb_show:72454:s0:
     "1": "21"
 anilist:5351:
@@ -6782,8 +6763,6 @@ anilist:6437:
 anilist:6438:
   anidb:6650:R:
     "1": "1"
-  tmdb_movie:1221954:
-    "1": "1"
   tmdb_show:30983:s0:
     "1": "17"
   tvdb_show:72454:s0:
@@ -6968,7 +6947,9 @@ anilist:6728:
 anilist:6733:
   imdb_movie:tt0185339:
     "1": "1"
-  tmdb_movie:139503:
+  tmdb_movie:687383:
+    "1": "1"
+  tvdb_movie:80247:
     "1": "1"
 anilist:6734:
   imdb_movie:tt0185336:
@@ -7711,8 +7692,6 @@ anilist:8312:
     "1": "1"
   mal:8312:
     "1": "1"
-  tmdb_movie:629290:
-    "1": "1"
 anilist:8314:
   tvdb_show:93281:s0:
     "1-4": "1-4"
@@ -7848,8 +7827,6 @@ anilist:8604:
     "1": "1"
 anilist:8609:
   imdb_movie:tt27480208:
-    "1": "1"
-  tmdb_movie:960611:
     "1": "1"
   tvdb_show:72454:s0:
     "1": "30"
@@ -9361,7 +9338,9 @@ anilist:11061:
 anilist:11069:
   anidb:8139:R:
     "1": "1"
-  tmdb_movie:665583:
+  tmdb_movie:504327:
+    "1": "1"
+  tvdb_movie:267805:
     "1": "1"
   tvdb_show:76703:s0:
     "1": "39"
@@ -9780,10 +9759,10 @@ anilist:12673:
 anilist:12685:
   imdb_movie:tt3716922:
     "1": "1"
-  tmdb_movie:1469730:
-    "1": "1"
   tmdb_show:31724:s0:
     "1": "34"
+  tvdb_movie:133716:
+    "1": "1"
 anilist:12695:
   tvdb_show:318189:s1:
     "1-2": "1-2"
@@ -9944,7 +9923,7 @@ anilist:13245:
 anilist:13249:
   imdb_movie:tt7109278:
     "1": "1"
-  tmdb_movie:694805:
+  tmdb_movie:1498730:
     "1": "1"
   tvdb_show:71863:s0:
     "1": "37"
@@ -10112,8 +10091,6 @@ anilist:13831:
   mal:13831:
     "1": "1"
 anilist:13837:
-  tmdb_movie:1084315:
-    "1": "1"
   tvdb_show:72454:s0:
     "1": "52"
 anilist:13839:
@@ -10672,7 +10649,7 @@ anilist:16756:
 anilist:16762:
   imdb_movie:tt3249404:
     "1": "1"
-  tmdb_movie:267824:
+  tvdb_movie:95423:
     "1": "1"
 anilist:16774:
   tvdb_show:265113:s1:
@@ -10867,7 +10844,7 @@ anilist:17479:
   anidb:7839:R:
     "1": "1"
 anilist:17641:
-  tmdb_movie:378094:
+  tmdb_movie:1608694:
     "1": "1"
 anilist:17643:
   tmdb_show:53715:s0:
@@ -11666,8 +11643,6 @@ anilist:20626:
   tvdb_show:114801:s7:
     "91-102": "1-12"
 anilist:20630:
-  tmdb_movie:801175:
-    "1-2": "1|2"
   tmdb_show:61398:s0:
     "1-2": "1-2"
   tvdb_show:279828:s0:
@@ -12763,9 +12738,6 @@ anilist:21416:
 anilist:21426:
   tmdb_movie:374195:
     "1": "1"
-anilist:21430:
-  tmdb_movie:381344:
-    "1": "1"
 anilist:21432:
   imdb_movie:tt7227948:
     "1": "1"
@@ -12881,8 +12853,6 @@ anilist:21494:
   imdb_movie:tt8329316:
     "1": "1"
   mal:20855:
-    "1": "1"
-  tmdb_movie:902987:
     "1": "1"
 anilist:21496:
   tvdb_show:78916:s0:
@@ -14305,7 +14275,9 @@ anilist:100721:
 anilist:100728:
   imdb_movie:tt12589360:
     "1": "1"
-  tmdb_movie:495907:
+  tmdb_movie:900497:
+    "1": "1"
+  tvdb_movie:67453:
     "1": "1"
 anilist:100729:
   imdb_movie:tt10311578:
@@ -16952,8 +16924,6 @@ anilist:106146:
     "1": "1"
   imdb_movie:tt14450782:
     "1": "1"
-  tmdb_movie:577485:
-    "1": "1"
 anilist:106153:
   mal:38728:
     "1": "1"
@@ -17934,7 +17904,9 @@ anilist:111282:
 anilist:111290:
   imdb_movie:tt17203464:
     "1": "1"
-  tmdb_movie:6356813:
+  tmdb_movie:635681:
+    "1": "1"
+  tvdb_movie:132358:
     "1": "1"
 anilist:111305:
   imdb_movie:tt15683538:
@@ -19362,8 +19334,10 @@ anilist:121663:
   tvdb_show:275582:s0:
     "1": "3"
 anilist:121664:
-  tmdb_movie:99662:
-    "1": "1"
+  anidb:2780:R:
+    "1": "2"
+  mal:2724:
+    "1": "2"
 anilist:121665:
   anidb:14343:R:
     "1": "1"
@@ -20368,10 +20342,10 @@ anilist:130323:
 anilist:130389:
   imdb_movie:tt15497404:
     "1": "1"
-  tmdb_movie:1009176:
-    "1": "1"
   tmdb_show:60833:s0:
     "1": "8"
+  tvdb_movie:332115:
+    "1": "1"
   tvdb_show:278329:s0:
     "1": "9"
 anilist:130402:
@@ -20618,8 +20592,12 @@ anilist:132615:
   mal:52931:
     "1": "1"
 anilist:132634:
+  tmdb_movie:1390609:
+    "1": "1"
   tmdb_show:40424:s0:
     "1": "8"
+  tvdb_movie:157504:
+    "1": "1"
   tvdb_show:70900:s0:
     "1": "9"
 anilist:132658:
@@ -24409,6 +24387,8 @@ anilist:164538:
 anilist:164551:
   tmdb_show:80713:s0:
     "1": "33"
+  tvdb_movie:350998:
+    "1": "1"
   tvdb_show:347215:s0:
     "1": "17"
 anilist:165056:
@@ -27062,7 +27042,7 @@ anilist:182466:
 anilist:182469:
   imdb_movie:tt33998607:
     "1": "1"
-  tmdb_movie:1392023:
+  tvdb_movie:361195:
     "1": "1"
   tvdb_show:81797:s0:
     "1": "57"
