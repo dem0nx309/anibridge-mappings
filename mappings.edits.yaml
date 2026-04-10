@@ -147,9 +147,21 @@ anilist:28:
   tvdb_show:76014:s3:
     "53-69": "1-17"
 anilist:31:
+  imdb_movie:tt0169880:
+    "1": "1"
+  tmdb_movie:21832:
+    "1": "1"
+  tvdb_movie:7207:
+    "1": "1"
   tvdb_show:70350:s0:
     "1": "1"
 anilist:32:
+  imdb_movie:tt0169858:
+    "1": "1"
+  tmdb_movie:18491:
+    "1": "1"
+  tvdb_movie:2036:
+    "1": "1"
   tvdb_show:70350:s0:
     "1": "2"
 anilist:43:
@@ -28077,6 +28089,20 @@ anilist:207675:
     "1-": "1-"
   tvdb_show:473925:s1:
     "1-": "1-"
+imdb_movie:tt13645944:
+  anilist:31:
+    "1": "1"
+  anilist:32:
+    "1": "1"
+  mal:31:
+    "1": "1"
+  mal:32:
+    "1": "1"
+imdb_movie:tt28717062:
+  anilist:31:
+    "1": "1"
+  mal:31:
+    "1": "1"
 mal:20:
   tmdb_show:46260:s1:
     "1-52": "1-52"
@@ -28411,11 +28437,39 @@ mal:171099:
     "1": "1"
   tvdb_show:413522:s0:
     "1": "3"
+tmdb_movie:54270:
+  anilist:31:
+    "1": "1"
+  anilist:32:
+    "1": "1"
+  mal:31:
+    "1": "1"
+  mal:32:
+    "1": "1"
+tmdb_movie:857862:
+  anilist:31:
+    "1": "1"
+  mal:31:
+    "1": "1"
 tmdb_show:42511:s1: # do not change, no warning shots
   anilist:849:
     "1-14": "1-14|0"
   anilist:4382:
     "1-28": "1-28|0"
+tvdb_movie:19105:
+  anilist:31:
+    "1": "1"
+  anilist:32:
+    "1": "1"
+  mal:31:
+    "1": "1"
+  mal:32:
+    "1": "1"
+tvdb_movie:363196:
+  anilist:31:
+    "1": "1"
+  mal:31:
+    "1": "1"
 tvdb_show:79414:s0: # do not change, I'll kick you in the shins
   anilist:7311:
     "1": "1|0"
