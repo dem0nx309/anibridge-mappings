@@ -115,23 +115,32 @@ class CachedMetadataSource(MetadataSource):
         missing: list[tuple[str, str | None]] = []
         for entry_id, scope in entry_ids:
             cache_key = entry_id if scope is None else f"{entry_id}|{scope}"
+            base_key = entry_id
 
             if cache_key in self._cache:
+                # Exact scoped cache hit
                 self._ingest(store, entry_id, self._cache[cache_key])
                 continue
 
-            if entry_id in self._cache:
-                base_cached = self._cache[entry_id]
-                if base_cached is None or scope is None:
-                    self._ingest(store, entry_id, base_cached)
-                else:
+            base_cached = self._cache.get(base_key, None)
+            if base_key in self._cache:
+                if base_cached is None:
+                    # Previously confirmed missing (e.g. 404)
+                    self._ingest(store, entry_id, None)
+                    continue
+
+                if isinstance(base_cached, dict):
+                    if scope is None:
+                        self._ingest(store, entry_id, base_cached)
+                        continue
+
                     scoped_meta = base_cached.get(scope)
                     self._ingest(
                         store,
                         entry_id,
-                        {scope: scoped_meta} if scoped_meta else None,
+                        None if scoped_meta is None else {scope: scoped_meta},
                     )
-                continue
+                    continue
 
             missing.append((entry_id, scope))
 
@@ -215,6 +224,12 @@ class CachedMetadataSource(MetadataSource):
                 )
                 for entry_id, scope_map in entries.items()
             }
+        return self._convert_legacy_payload(payload)
+
+    def _convert_legacy_payload(
+        self, payload: object
+    ) -> dict[str, dict[str | None, SourceMeta] | None]:
+        """Convert legacy cache payloads into the current format."""
         return {}
 
     def _persist_cache(self) -> None:
@@ -225,11 +240,6 @@ class CachedMetadataSource(MetadataSource):
             orjson.dumps(
                 {
                     "version": self.CACHE_VERSION,
-                    "meta": {
-                        "provider": self.provider_key,
-                        "generated_on": int(asyncio.get_event_loop().time()),
-                        "length": len(self._cache),
-                    },
                     "entries": {
                         entry_id: (
                             {

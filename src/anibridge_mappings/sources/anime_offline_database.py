@@ -83,7 +83,7 @@ class AnimeOfflineDatabaseSource(MetadataSource, IdMappingSource):
         Returns:
             MetaStore: Collected metadata.
         """
-        del id_graph
+        del id_graph  # Metadata does not depend on graph structure yet.
         store = MetaStore()
         for entry in self._require_entries():
             providers = self._collect_provider_ids(entry)
@@ -144,8 +144,9 @@ class AnimeOfflineDatabaseSource(MetadataSource, IdMappingSource):
     def _parse_type_string(type_str: str) -> SourceType | None:
         """Parse a type string into a SourceType enum."""
         type_str = type_str.lower()
-        if type_str in ("movie", "music"):
+        if type_str == "movie":
             return SourceType.MOVIE
-        if type_str in ("tv", "ova", "ona", "special"):
+        if type_str in ("tv", "ova", "ona", "special", "music"):
             return SourceType.TV
-        return None
+        if type_str == "unknown":
+            return None

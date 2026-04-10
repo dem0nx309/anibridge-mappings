@@ -10,7 +10,7 @@ from typing import Any
 import orjson
 
 from anibridge_mappings.core.graph import IdMappingGraph
-from anibridge_mappings.core.meta import MetaStore, SourceType, normalize_titles
+from anibridge_mappings.core.meta import MetaStore, SourceType
 from anibridge_mappings.sources.base import IdMappingSource, MetadataSource
 from anibridge_mappings.utils.provider_ids import normalize_imdb_id
 
@@ -24,18 +24,6 @@ class AnimeAggregationsSource(IdMappingSource, MetadataSource):
     ANIME_DIR = "anime"
     LOCAL_REPO_ROOT = Path("data/meta/AnimeAggregations")
     DEFAULT_SCOPE = "R"
-
-    _ALLOWED_TITLE_LANGUAGES = frozenset(
-        {
-            "ENGLISH",
-            "JAPANESE",
-            "JAPANESE_TRANSLITERATED",
-            "CHINESE",
-            "CHINESE_SIMPLIFIED",
-            "CHINESE_TRADITIONAL",
-            "CHINESE_TRANSLITERATED",
-        }
-    )
 
     def __init__(self) -> None:
         """Initialize the local cache for fetched entries."""
@@ -72,8 +60,6 @@ class AnimeAggregationsSource(IdMappingSource, MetadataSource):
             duration = self._extract_duration(entry.get("episodes"))
             start_year = self._extract_start_year(entry)
 
-            titles = self._extract_titles(entry.get("titles"))
-
             if main_episodes:
                 meta = store.get(
                     "anidb",
@@ -94,8 +80,6 @@ class AnimeAggregationsSource(IdMappingSource, MetadataSource):
                     meta.duration = duration
                 if start_year is not None:
                     meta.start_year = start_year
-                if titles:
-                    meta.titles = titles
 
             if special_episodes:
                 specials_meta = store.get("anidb", anidb_id, scope="S")
@@ -215,9 +199,10 @@ class AnimeAggregationsSource(IdMappingSource, MetadataSource):
             return []
         return sorted(
             {
-                nid
+                normalized_id
                 for entry in imdb_entries
-                if (nid := normalize_imdb_id(entry)) is not None
+                for normalized_id in [normalize_imdb_id(entry)]
+                if normalized_id is not None
             }
         )
 
@@ -275,7 +260,7 @@ class AnimeAggregationsSource(IdMappingSource, MetadataSource):
 
     @staticmethod
     def _extract_duration(episodes_payload: dict[str, Any] | None) -> int | None:
-        """Return the most common episode duration in seconds."""
+        """Return the most common episode duration (minutes) when available."""
         if not episodes_payload:
             return None
 
@@ -294,26 +279,6 @@ class AnimeAggregationsSource(IdMappingSource, MetadataSource):
 
         most_common, _count = Counter(lengths).most_common(1)[0]
         return most_common
-
-    @staticmethod
-    def _extract_titles(
-        raw_titles: list[dict[str, Any]] | None,
-    ) -> tuple[str, ...] | None:
-        """Extract MAIN and OFFICIAL titles from the titles payload."""
-        if not raw_titles:
-            return None
-        selected: list[str] = []
-        for item in raw_titles:
-            title_type = item.get("type", "")
-            if title_type not in ("MAIN", "OFFICIAL"):
-                continue
-            language = item.get("language", "")
-            if language not in AnimeAggregationsSource._ALLOWED_TITLE_LANGUAGES:
-                continue
-            title = item.get("title", "")
-            if title:
-                selected.append(title)
-        return normalize_titles(selected) or None
 
     @staticmethod
     def _extract_start_year(entry: dict[str, Any]) -> int | None:

@@ -33,13 +33,6 @@ def parse_descriptor(descriptor: str) -> tuple[str, str, str | None]:
     return parse_mapping_descriptor(descriptor)
 
 
-def format_descriptor(provider: str, entry_id: str, scope: str | None) -> str:
-    """Format a provider descriptor from tuple parts."""
-    if scope is None or scope == "":
-        return f"{provider}:{entry_id}"
-    return f"{provider}:{entry_id}:{scope}"
-
-
 def normalize_episode_key(value: str | None) -> str | None:
     """Normalize one episode key string."""
     if value is None:
@@ -59,7 +52,7 @@ def build_source_target_map(graph: EpisodeMappingGraph) -> SourceTargetMap:
 
     for node in sorted(
         graph.nodes(),
-        key=lambda n: (n[0], n[1], n[2] or "", n[3]),
+        key=lambda n: (n[0], n[1], "" if n[2] is None else n[2], n[3]),
     ):
         provider, entry_id, scope, source_raw = node
         source_range = normalize_episode_key(source_raw)
@@ -68,7 +61,7 @@ def build_source_target_map(graph: EpisodeMappingGraph) -> SourceTargetMap:
 
         for neighbor in sorted(
             graph.neighbors(node),
-            key=lambda n: (n[0], n[1], n[2] or "", n[3]),
+            key=lambda n: (n[0], n[1], "" if n[2] is None else n[2], n[3]),
         ):
             if neighbor == node:
                 continue
@@ -159,7 +152,10 @@ def _source_bounds(key: str) -> tuple[int, int] | None:
     bounds = parse_range_bounds(key)
     if bounds is None or bounds[1] is None:
         return None
-    return bounds[0], bounds[1]
+    start, end = bounds
+    if end is None:
+        return None
+    return start, end
 
 
 def _merge_adjacent_numeric_keys(mapping: dict[str, str]) -> dict[str, str]:

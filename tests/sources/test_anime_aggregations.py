@@ -1,6 +1,3 @@
-import asyncio
-
-from anibridge_mappings.core.graph import IdMappingGraph
 from anibridge_mappings.sources.anime_aggregations import AnimeAggregationsSource
 
 
@@ -68,11 +65,13 @@ def test_anime_aggregations_normalizes_movie_metadata_for_inference() -> None:
         }
     ]
 
-    store = asyncio.run(source.collect_metadata(IdMappingGraph()))
+    import asyncio
+
+    store = asyncio.run(source.collect_metadata(None))  # type: ignore[arg-type]
     regular = store.peek("anidb", "7", "R")
 
     assert regular is not None
-    assert regular.type == "movie" or regular.type == "movie"
+    assert regular.type == "movie" or regular.type.value == "movie"
     assert regular.episodes == 1
     assert regular.duration is None
     assert regular.start_year == 1997
