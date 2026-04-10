@@ -58,18 +58,7 @@ class BaseShinkroMappingSource(BaseSource):
 
     @staticmethod
     def _normalize_id(value: Any) -> str | None:
-        """Normalize an ID to a positive numeric string."""
-        try:
-            num = int(value)
-        except TypeError, ValueError:
-            return None
-        if num <= 0:
-            return None
-        return str(num)
-
-    @staticmethod
-    def _normalize_positive_int(value: Any) -> str | None:
-        """Normalize an integer to a positive numeric string."""
+        """Normalize a value to a positive numeric string."""
         try:
             num = int(value)
         except TypeError, ValueError:
@@ -107,7 +96,7 @@ class ShinkroTvdbMappingSource(
 
         for entry in self._require_entries():
             mal_id = self._normalize_id(entry.get("malid"))
-            tvdb_id = self._normalize_positive_int(entry.get("tvdbid"))
+            tvdb_id = self._normalize_id(entry.get("tvdbid"))
             if not mal_id or not tvdb_id:
                 continue
 
@@ -142,7 +131,7 @@ class ShinkroTvdbMappingSource(
 
         for entry in self._require_entries():
             mal_id = self._normalize_id(entry.get("malid"))
-            tvdb_id = self._normalize_positive_int(entry.get("tvdbid"))
+            tvdb_id = self._normalize_id(entry.get("tvdbid"))
             if not mal_id or not tvdb_id:
                 continue
 
@@ -171,12 +160,19 @@ class ShinkroTvdbMappingSource(
                 if season is None:
                     continue
 
-                total = self._season_total(store, tvdb_id, season)
-                if total is None:
-                    continue
-
                 start = self._normalize_start(entry.get("start"))
-                pairs = self._range_pairs(start, total, set())
+
+                if start > 0:
+                    mal_total = self._mal_total(store, mal_id)
+                    if mal_total is None:
+                        continue
+                    pairs = [(start + i, i + 1) for i in range(mal_total)]
+                else:
+                    total = self._season_total(store, tvdb_id, season)
+                    if total is None:
+                        continue
+                    pairs = self._range_pairs(0, total, set())
+
                 self._add_pairs(graph, tvdb_id, season, mal_id, pairs)
 
         return graph
@@ -206,6 +202,14 @@ class ShinkroTvdbMappingSource(
         if meta and isinstance(meta.episodes, int) and meta.episodes > 0:
             return meta.episodes
         log.debug("Missing TVDB metadata for %s season %s", tvdb_id, season)
+        return None
+
+    def _mal_total(self, store: MetaStore, mal_id: str) -> int | None:
+        """Return the episode count for a MAL entry from metadata."""
+        meta = store.peek("mal", mal_id, None)
+        if meta and isinstance(meta.episodes, int) and meta.episodes > 0:
+            return meta.episodes
+        log.debug("Missing MAL metadata for %s", mal_id)
         return None
 
     def _range_pairs(
@@ -372,7 +376,7 @@ class ShinkroTmdbMappingSource(
 
         for entry in self._require_entries():
             mal_id = self._normalize_id(entry.get("malid"))
-            tmdb_id = self._normalize_positive_int(entry.get("tmdbid"))
+            tmdb_id = self._normalize_id(entry.get("tmdbid"))
             if not mal_id or not tmdb_id:
                 continue
 
@@ -401,7 +405,7 @@ class ShinkroTmdbMappingSource(
 
         for entry in self._require_entries():
             mal_id = self._normalize_id(entry.get("malid"))
-            tmdb_id = self._normalize_positive_int(entry.get("tmdbid"))
+            tmdb_id = self._normalize_id(entry.get("tmdbid"))
             if not mal_id or not tmdb_id:
                 continue
 

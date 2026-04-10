@@ -4,24 +4,20 @@ from collections import deque
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, TypeVar
-
-NodeT = TypeVar("NodeT")
+from typing import Any
 
 
 class _BaseGraph[NodeT]:
-    """Lightweight graph with support for directed and undirected edges."""
+    """Lightweight directed graph (edges are bidirectional by default)."""
 
     def __init__(self) -> None:
-        """Initialize empty adjacency and predecessor maps."""
+        """Initialize empty adjacency map."""
         self._adj: dict[NodeT, set[NodeT]] = {}
-        self._pred: dict[NodeT, set[NodeT]] = {}
 
     def _ensure_node(self, node: NodeT) -> None:
-        """Ensure a node exists in adjacency and predecessor maps."""
+        """Ensure a node exists in the adjacency map."""
         if node not in self._adj:
             self._adj[node] = set()
-            self._pred[node] = set()
 
     def add_edge(self, a: NodeT, b: NodeT, bidirectional: bool = True) -> None:
         """Add an edge between nodes.
@@ -37,29 +33,15 @@ class _BaseGraph[NodeT]:
         self._ensure_node(a)
         self._ensure_node(b)
         self._adj[a].add(b)
-        self._pred[b].add(a)
         if bidirectional:
             self._adj[b].add(a)
-            self._pred[a].add(b)
 
     def has_edge(self, a: NodeT, b: NodeT) -> bool:
-        """Check if an edge exists between `a` and `b`.
-
-        Args:
-            a (NodeT): Start node.
-            b (NodeT): End node.
-
-        Returns:
-            bool: True if an edge exists in either direction.
-        """
-        return b in self._adj.get(a, set()) or a in self._adj.get(b, set())
+        """Check if a directed edge exists from `a` to `b`."""
+        return b in self._adj.get(a, set())
 
     def add_equivalence_class(self, nodes: Iterable[NodeT]) -> None:
-        """Add an undirected equivalence class of nodes.
-
-        Args:
-            nodes (Iterable[NodeT]): Nodes to connect together.
-        """
+        """Add an undirected equivalence class of nodes."""
         unique = list(dict.fromkeys(nodes))
         if len(unique) <= 1:
             for node in unique:
@@ -70,62 +52,30 @@ class _BaseGraph[NodeT]:
             self.add_edge(base, other, bidirectional=True)
 
     def add_graph(self, other: _BaseGraph[NodeT]) -> None:
-        """Merge another graph's edges into this graph.
-
-        Args:
-            other (_BaseGraph[NodeT]): Graph to merge.
-        """
+        """Merge another graph's edges into this graph."""
         for node in other.nodes():
             self._ensure_node(node)
         for node in other.nodes():
             for neighbor in other.neighbors(node):
-                # We assume if it's in neighbors, it's an edge.
-                # We don't know if it was bidirectional in the source,
-                # but we can just add it as directed here.
-                # If the source had it bidirectional, we'll see the reverse edge later.
                 self.add_edge(node, neighbor, bidirectional=False)
 
     def has_node(self, node: NodeT) -> bool:
-        """Check if a node exists in the graph.
-
-        Args:
-            node (NodeT): Node to check.
-        """
+        """Check if a node exists in the graph."""
         return node in self._adj
 
     def neighbors(self, node: NodeT) -> set[NodeT]:
-        """Return the neighbor set for a node.
-
-        Args:
-            node (NodeT): Node to inspect.
-        """
+        """Return the neighbor set for a node."""
         return self._adj.get(node, set()).copy()
 
-    def remove_edge(self, a: NodeT, b: NodeT) -> None:
-        """Remove an edge between `a` and `b` if present (both directions).
-
-        Args:
-            a (NodeT): Start node.
-            b (NodeT): End node.
-        """
+    def remove_edge(self, a: NodeT, b: NodeT, bidirectional: bool = True) -> None:
+        """Remove an edge from `a` to `b`."""
         if a in self._adj:
             self._adj[a].discard(b)
-        if b in self._pred:
-            self._pred[b].discard(a)
-        if b in self._adj:
+        if bidirectional and b in self._adj:
             self._adj[b].discard(a)
-        if a in self._pred:
-            self._pred[a].discard(b)
 
     def get_component(self, start: NodeT) -> set[NodeT]:
-        """Return the connected component containing `start`.
-
-        Args:
-            start (NodeT): Node to start the traversal from.
-
-        Returns:
-            set[NodeT]: Nodes in the connected component.
-        """
+        """Return the connected component containing `start`."""
         if start not in self._adj:
             return set()
         visited: set[NodeT] = set()
@@ -139,40 +89,20 @@ class _BaseGraph[NodeT]:
         return visited
 
     def node_count(self) -> int:
-        """Return the total number of nodes in the graph.
-
-        Returns:
-            int: Node count.
-        """
+        """Return the total number of nodes in the graph."""
         return len(self._adj)
 
     def nodes(self) -> set[NodeT]:
-        """Return all nodes in the graph.
-
-        Returns:
-            set[NodeT]: Nodes in the graph.
-        """
+        """Return all nodes in the graph."""
         return set(self._adj)
 
     def remove_node(self, node: NodeT) -> None:
-        """Remove a node and all incident edges.
-
-        Args:
-            node (NodeT): Node to remove.
-        """
+        """Remove a node and all incident edges."""
         if node not in self._adj:
             return
-
-        # Remove outgoing edges
         for neighbor in self._adj[node]:
-            self._pred[neighbor].discard(node)
-
-        # Remove incoming edges
-        for predecessor in self._pred[node]:
-            self._adj[predecessor].discard(node)
-
+            self._adj[neighbor].discard(node)
         del self._adj[node]
-        del self._pred[node]
 
 
 IdNode = tuple[str, str, str | None]  # (provider, id, scope)
@@ -238,12 +168,7 @@ class EpisodeMappingGraph(_BaseGraph[EpisodeNode]):
     def _node_key(self, node: EpisodeNode) -> tuple[str, str, str, str]:
         """Key function for sorting nodes."""
         provider, entry_id, scope, episode_range = node
-        return (
-            str(provider),
-            str(entry_id),
-            "" if scope is None else str(scope),
-            str(episode_range),
-        )
+        return (provider, entry_id, scope or "", episode_range)
 
     def _edge_key(
         self, a: EpisodeNode, b: EpisodeNode
@@ -273,6 +198,7 @@ class EpisodeMappingGraph(_BaseGraph[EpisodeNode]):
         if details:
             merged_details = {**(merged_details or {}), **details}
         self._provenance_seq += 1
+        key = self._edge_key(a, b)
         event = ProvenanceEvent(
             seq=self._provenance_seq,
             action=action,
@@ -282,7 +208,6 @@ class EpisodeMappingGraph(_BaseGraph[EpisodeNode]):
             effective=effective,
             details=merged_details,
         )
-        key = self._edge_key(a, b)
         self._provenance.setdefault(key, []).append(event)
 
     def add_edge(
@@ -303,7 +228,7 @@ class EpisodeMappingGraph(_BaseGraph[EpisodeNode]):
             provenance (ProvenanceContext | None): Context for the addition.
             details (dict[str, Any] | None): Additional details for the event.
         """
-        existed = self.has_edge(a, b)
+        existed = self.has_edge(a, b) or self.has_edge(b, a)
         super().add_edge(a, b, bidirectional=bidirectional)
         self._record_event(
             "add",
@@ -318,20 +243,14 @@ class EpisodeMappingGraph(_BaseGraph[EpisodeNode]):
         self,
         a: EpisodeNode,
         b: EpisodeNode,
+        bidirectional: bool = True,
         *,
         provenance: ProvenanceContext | None = None,
         details: dict[str, Any] | None = None,
     ) -> None:
-        """Remove an edge between `a` and `b` if present (both directions).
-
-        Args:
-            a (EpisodeNode): Start node.
-            b (EpisodeNode): End node.
-            provenance (ProvenanceContext | None): Context for the removal.
-            details (dict[str, Any] | None): Additional details for the event.
-        """
-        existed = self.has_edge(a, b)
-        super().remove_edge(a, b)
+        """Remove an edge between `a` and `b` with provenance."""
+        existed = self.has_edge(a, b) or self.has_edge(b, a)
+        super().remove_edge(a, b, bidirectional=bidirectional)
         self._record_event(
             "remove",
             a,
@@ -352,21 +271,12 @@ class EpisodeMappingGraph(_BaseGraph[EpisodeNode]):
             self._provenance_context = prior
 
     def iter_edges(self) -> list[tuple[EpisodeNode, EpisodeNode]]:
-        """Return unique undirected edges for this graph.
-
-        Returns:
-            list[tuple[EpisodeNode, EpisodeNode]]: List of unique edges.
-        """
+        """Return unique undirected edges for this graph."""
         seen: set[tuple[EpisodeNode, EpisodeNode]] = set()
-        edges: list[tuple[EpisodeNode, EpisodeNode]] = []
-        for node in sorted(self.nodes(), key=self._node_key):
-            for neighbor in sorted(self.neighbors(node), key=self._node_key):
-                key = self._edge_key(node, neighbor)
-                if key in seen:
-                    continue
-                seen.add(key)
-                edges.append(key)
-        return edges
+        for node in self.nodes():
+            for neighbor in self._adj.get(node, set()):
+                seen.add(self._edge_key(node, neighbor))
+        return sorted(seen, key=lambda e: (self._node_key(e[0]), self._node_key(e[1])))
 
     def add_graph(
         self,
@@ -403,28 +313,15 @@ class EpisodeMappingGraph(_BaseGraph[EpisodeNode]):
     def provenance_items(
         self,
     ) -> list[tuple[EpisodeNode, EpisodeNode, list[ProvenanceEvent]]]:
-        """Return provenance entries for all observed edges.
-
-        Returns:
-            list[tuple[EpisodeNode, EpisodeNode, list[ProvenanceEvent]]]: List of edges
-                with events.
-        """
-        items: list[tuple[EpisodeNode, EpisodeNode, list[ProvenanceEvent]]] = []
-        seen: set[tuple[EpisodeNode, EpisodeNode]] = set()
-        for edge in self.iter_edges():
-            if edge in self._provenance:
-                items.append((edge[0], edge[1], list(self._provenance[edge])))
-                seen.add(edge)
-        for edge, events in self._provenance.items():
-            if edge in seen:
-                continue
-            items.append((edge[0], edge[1], list(events)))
-        items.sort(key=lambda item: (self._node_key(item[0]), self._node_key(item[1])))
-        return items
+        """Return provenance entries for all observed edges."""
+        return sorted(
+            ((a, b, list(events)) for (a, b), events in self._provenance.items()),
+            key=lambda item: (self._node_key(item[0]), self._node_key(item[1])),
+        )
 
     def is_edit_edge(self, a: EpisodeNode, b: EpisodeNode) -> bool:
         """Return True when the active edge state was added by an edit."""
-        if not self.has_edge(a, b):
+        if not self.has_edge(a, b) and not self.has_edge(b, a):
             return False
 
         edit = False
@@ -456,7 +353,7 @@ class EpisodeMappingGraph(_BaseGraph[EpisodeNode]):
         Returns:
             int: Number of new edges added.
         """
-        existing_scope_pairs = self._build_scope_pair_index()
+        scope_pairs, exclusive = self._build_transitive_indexes()
 
         visited: set[EpisodeNode] = set()
         added = 0
@@ -469,31 +366,28 @@ class EpisodeMappingGraph(_BaseGraph[EpisodeNode]):
                 continue
             nodes = sorted(component, key=self._node_key)
             for idx, source in enumerate(nodes):
+                src_scope = source[:3]
                 for target in nodes[idx + 1 :]:
                     if source[0] == target[0]:
                         continue
                     if target in self._adj.get(source, set()):
                         continue
-                    if any(c in (",", "|") for c in source[3]) or any(
-                        c in (",", "|") for c in target[3]
-                    ):
-                        # Complex range, skip creating a transitive edge
+                    if any(c in (",", "|") for c in source[3] + target[3]):
                         continue
-                    src_scope = (source[0], source[1], source[2])
-                    tgt_scope = (target[0], target[1], target[2])
+                    tgt_scope = target[:3]
+                    pair = (src_scope, tgt_scope)
+                    rpair = (tgt_scope, src_scope)
                     if blocked_scope_pairs and (
-                        (src_scope, tgt_scope) in blocked_scope_pairs
-                        or (
-                            tgt_scope,
-                            src_scope,
-                        )
-                        in blocked_scope_pairs
+                        pair in blocked_scope_pairs or rpair in blocked_scope_pairs
                     ):
                         continue
-                    if (src_scope, tgt_scope) in existing_scope_pairs or (
-                        tgt_scope,
-                        src_scope,
-                    ) in existing_scope_pairs:
+                    if pair in scope_pairs or rpair in scope_pairs:
+                        continue
+                    src_exc = exclusive.get((src_scope, target[0]))
+                    tgt_exc = exclusive.get((tgt_scope, source[0]))
+                    if (src_exc and src_exc != target[1]) or (
+                        tgt_exc and tgt_exc != source[1]
+                    ):
                         continue
                     self.add_edge(
                         source,
@@ -504,20 +398,41 @@ class EpisodeMappingGraph(_BaseGraph[EpisodeNode]):
                     added += 1
         return added
 
-    def _build_scope_pair_index(
+    def _build_transitive_indexes(
         self,
-    ) -> set[tuple[tuple[str, str, str | None], tuple[str, str, str | None]]]:
-        """Return scope pairs that already have at least one direct edge."""
-        pairs: set[tuple[tuple[str, str, str | None], tuple[str, str, str | None]]] = (
-            set()
-        )
+    ) -> tuple[
+        set[tuple[tuple[str, str, str | None], tuple[str, str, str | None]]],
+        dict[tuple[tuple[str, str, str | None], str], str],
+    ]:
+        """Build indexes for transitive closure.
+
+        Returns:
+            A tuple of:
+            - scope_pairs: scope pairs that already have at least one direct edge.
+            - exclusive: map of (scope, provider) to the sole entry ID when exactly
+              one entry exists. Multi-entry scopes (e.g. TVDB seasons spanning many
+              anime) are omitted entirely so they never block transitive edges.
+        """
+        scope_pairs: set[
+            tuple[tuple[str, str, str | None], tuple[str, str, str | None]]
+        ] = set()
+        entries: dict[tuple[tuple[str, str, str | None], str], set[str]] = {}
         for node in self.nodes():
-            src_scope = (node[0], node[1], node[2])
+            src = node[:3]
             for neighbor in self._adj.get(node, set()):
-                tgt_scope = (neighbor[0], neighbor[1], neighbor[2])
-                if src_scope != tgt_scope:
-                    pairs.add((src_scope, tgt_scope))
-        return pairs
+                tgt = neighbor[:3]
+                if src != tgt:
+                    scope_pairs.add((src, tgt))
+                    entries.setdefault((src, tgt[0]), set()).add(tgt[1])
+                    entries.setdefault((tgt, src[0]), set()).add(src[1])
+
+        multi = {scope for (scope, _), ids in entries.items() if len(ids) > 1}
+        exclusive = {
+            k: next(iter(v))
+            for k, v in entries.items()
+            if len(v) == 1 and k[0] not in multi
+        }
+        return scope_pairs, exclusive
 
     def get_component_by_provider(
         self, start: EpisodeNode

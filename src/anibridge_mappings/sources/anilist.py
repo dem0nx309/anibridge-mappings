@@ -17,10 +17,10 @@ class AnilistSource(CachedMetadataSource):
 
     API_URL = "https://graphql.anilist.co"
     BATCH_SIZE = 50
-    CACHE_VERSION = 2
+    CACHE_VERSION = 4
 
     provider_key = "anilist"
-    cache_filename = "anilist_meta.json"
+    cache_filename = "anilist.json"
 
     def __init__(self, batch_size: int = BATCH_SIZE) -> None:
         """Initialize the AnilistSource.
@@ -163,7 +163,6 @@ class AnilistSource(CachedMetadataSource):
                                 title_payload.get(key)
                                 for key in ("romaji", "english", "native")
                             ]
-                            titles.extend(entry.get("synonyms") or [])
 
                             scope_meta: dict[str | None, SourceMeta] | None = {
                                 None: SourceMeta(
