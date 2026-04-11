@@ -146,9 +146,12 @@ class ShinkroTvdbMappingSource(
                     if mapping_type == "explicit":
                         pairs = self._explicit_pairs(mapping)
                     else:
-                        total = self._season_total(store, tvdb_id, season)
+                        total = self._season_total(
+                            store, tvdb_id, season
+                        ) or self._mal_total(store, mal_id)
                         if total is None:
                             continue
+
                         start = self._normalize_start(mapping.get("start"))
                         skip = self._normalize_skip(mapping.get("skipMalEpisodes"))
                         pairs = self._range_pairs(start, total, skip)
@@ -168,9 +171,12 @@ class ShinkroTvdbMappingSource(
                         continue
                     pairs = [(start + i, i + 1) for i in range(mal_total)]
                 else:
-                    total = self._season_total(store, tvdb_id, season)
+                    total = self._season_total(
+                        store, tvdb_id, season
+                    ) or self._mal_total(store, mal_id)
                     if total is None:
                         continue
+
                     pairs = self._range_pairs(0, total, set())
 
                 self._add_pairs(graph, tvdb_id, season, mal_id, pairs)
