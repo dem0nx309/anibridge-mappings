@@ -163,6 +163,28 @@ const toDiffLines = (prevJson: string, nextJson: string) => {
   return rows;
 };
 
+const buildOrderedRanges = (activeRanges: Set<string>) =>
+  collapseRanges(
+    Object.fromEntries(
+      [...activeRanges]
+        .map((k) => k.split("\0") as [string, string])
+        .sort(([a], [b]) => a.localeCompare(b)),
+    ),
+  );
+
+const applyRangeEvent = (
+  activeRanges: Set<string>,
+  dict: Dict,
+  event: { a: number; r: number; e: boolean },
+) => {
+  if (!event.e) return;
+  const action = getDictValue(dict, "actions", event.a) || "";
+  const range = getRange(dict, event.r);
+  const pairKey = `${range.source_range || "-"}\0${range.target_range || "-"}`;
+  if (action === "add") activeRanges.add(pairKey);
+  if (action === "remove") activeRanges.delete(pairKey);
+};
+
 export const buildTimelineSlides = (dict: Dict, mapping: Mapping): TimelineSlide[] => {
   const events = mapping.ev ?? [];
   if (!events.length) return [];
@@ -181,24 +203,10 @@ export const buildTimelineSlides = (dict: Dict, mapping: Mapping): TimelineSlide
     const sourceRange = range.source_range || "-";
     const targetRange = range.target_range || "-";
 
-    if (event.e) {
-      const pairKey = `${sourceRange}\0${targetRange}`;
-      if (action === "add") {
-        activeRanges.add(pairKey);
-      }
-      if (action === "remove") {
-        activeRanges.delete(pairKey);
-      }
-    }
-
-    const orderedRanges = collapseRanges(Object.fromEntries(
-      [...activeRanges]
-        .map(k => k.split('\0') as [string, string])
-        .sort(([a], [b]) => a.localeCompare(b)),
-    ));
+    applyRangeEvent(activeRanges, dict, event);
 
     const currentJson = JSON.stringify(
-      { [sourceDescriptor]: { [targetDescriptor]: orderedRanges } },
+      { [sourceDescriptor]: { [targetDescriptor]: buildOrderedRanges(activeRanges) } },
       null,
       2,
     );
@@ -225,36 +233,16 @@ export const buildTimelineSlides = (dict: Dict, mapping: Mapping): TimelineSlide
   });
 };
 
-export const stepLabel = (step: number, total: number) => `Step ${step} / ${total}`;
-
 export const buildFinalMappingObject = (dict: Dict, mapping: Mapping) => {
   const sourceDescriptor = getDictValue(dict, "descriptors", mapping.s) || "-";
   const targetDescriptor = getDictValue(dict, "descriptors", mapping.t) || "-";
   const activeRanges = new Set<string>();
 
   for (const event of mapping.ev ?? []) {
-    if (!event.e) continue;
-    const action = getDictValue(dict, "actions", event.a) || "";
-    const range = getRange(dict, event.r);
-    const sourceRange = range.source_range || "-";
-    const targetRange = range.target_range || "-";
-    const pairKey = `${sourceRange}\0${targetRange}`;
-
-    if (action === "add") {
-      activeRanges.add(pairKey);
-    }
-    if (action === "remove") {
-      activeRanges.delete(pairKey);
-    }
+    applyRangeEvent(activeRanges, dict, event);
   }
 
-  const orderedRanges = collapseRanges(Object.fromEntries(
-    [...activeRanges]
-      .map(k => k.split('\0') as [string, string])
-      .sort(([a], [b]) => a.localeCompare(b)),
-  ));
-
-  return { [sourceDescriptor]: { [targetDescriptor]: orderedRanges } };
+  return { [sourceDescriptor]: { [targetDescriptor]: buildOrderedRanges(activeRanges) } };
 };
 
 const formatYamlValue = (value: string | Record<string, unknown>, depth = 0): string => {

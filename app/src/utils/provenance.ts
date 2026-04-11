@@ -244,26 +244,14 @@ export const getProvenance = async (): Promise<ProvenancePayload> => {
 };
 
 export type PresenceFilter = "all" | "present" | "missing";
-export type SortOrder = "default" | "present" | "missing" | "timeline";
 
 export type MappingFilters = {
   source: string;
   target: string;
-  actor: string;
-  reason: string;
-  range: string;
   stage: string;
   present: PresenceFilter;
-  sort: SortOrder;
   page: number;
   perPage: number;
-};
-
-type RangeToken = {
-  raw: string;
-  source: string;
-  target: string;
-  pair: boolean;
 };
 
 type DictListKey = Exclude<keyof Dict, "ranges">;
@@ -284,33 +272,8 @@ export const getRange = (dict: Dict, index?: number) => {
   return { source_range: range.s ?? "", target_range: range.t ?? "" };
 };
 
-const toText = (value: unknown) => (value ?? "").toString();
-const normalize = (value: unknown) => toText(value).trim().toLowerCase();
-
-const parseRangeTokens = (input: string) => {
-  const query = normalize(input);
-  if (!query) return [] as RangeToken[];
-  return query
-    .split(",")
-    .map((token) => token.trim())
-    .filter(Boolean)
-    .map((token) => {
-      if (token.includes("|")) {
-        const [source, target] = token.split("|").map((part) => part.trim());
-        return { raw: token, source, target, pair: true };
-      }
-      return { raw: token, source: "", target: "", pair: false };
-    });
-};
-
-const mappingLabel = (mapping: Mapping, dict: Dict) => {
-  const source = getDictValue(dict, "descriptors", mapping.s);
-  const target = getDictValue(dict, "descriptors", mapping.t);
-  if (source && target) return `${source} → ${target}`;
-  if (source) return source;
-  if (target) return target;
-  return "(untitled mapping)";
-};
+const normalize = (value: unknown) =>
+  (value ?? "").toString().trim().toLowerCase();
 
 export const mappingMatches = (
   mapping: Mapping,
@@ -321,64 +284,17 @@ export const mappingMatches = (
   if (filters.present === "present" && !isPresent) return false;
   if (filters.present === "missing" && isPresent) return false;
 
-  if (filters.stage !== "all") {
-    const hasStage = (mapping.ev || []).some(
-      (event) => getDictValue(dict, "stages", event.s) === filters.stage,
-    );
-    if (!hasStage) return false;
-  }
-
-  const sourceQuery = normalize(filters.source);
-  if (
-    sourceQuery &&
-    !normalize(getDictValue(dict, "descriptors", mapping.s)).includes(sourceQuery)
-  ) {
+  if (filters.stage !== "all" &&
+    !(mapping.ev || []).some(e => getDictValue(dict, "stages", e.s) === filters.stage))
     return false;
-  }
 
-  const targetQuery = normalize(filters.target);
-  if (
-    targetQuery &&
-    !normalize(getDictValue(dict, "descriptors", mapping.t)).includes(targetQuery)
-  ) {
+  const sq = normalize(filters.source);
+  if (sq && !normalize(getDictValue(dict, "descriptors", mapping.s)).includes(sq))
     return false;
-  }
 
-  const rangeTokens = parseRangeTokens(filters.range);
-  if (rangeTokens.length) {
-    const ranges = (mapping.ev || []).map((event) => getRange(dict, event.r));
-    const matchesToken = (token: RangeToken) =>
-      ranges.some((range) => {
-        const sourceValue = normalize(range.source_range);
-        const targetValue = normalize(range.target_range);
-        if (token.pair) {
-          return (
-            sourceValue.includes(token.source) &&
-            targetValue.includes(token.target)
-          );
-        }
-        return normalize(`${range.source_range} ${range.target_range}`).includes(
-          token.raw,
-        );
-      });
-    if (!rangeTokens.every(matchesToken)) return false;
-  }
-
-  const actorQuery = normalize(filters.actor);
-  if (actorQuery) {
-    const match = (mapping.ev || []).some((event) =>
-      normalize(getDictValue(dict, "actors", event.ac)).includes(actorQuery),
-    );
-    if (!match) return false;
-  }
-
-  const reasonQuery = normalize(filters.reason);
-  if (reasonQuery) {
-    const match = (mapping.ev || []).some((event) =>
-      normalize(getDictValue(dict, "reasons", event.rs)).includes(reasonQuery),
-    );
-    if (!match) return false;
-  }
+  const tq = normalize(filters.target);
+  if (tq && !normalize(getDictValue(dict, "descriptors", mapping.t)).includes(tq))
+    return false;
 
   return true;
 };
@@ -388,39 +304,10 @@ export type IndexedMapping = { index: number; mapping: Mapping };
 export const filterMappings = (
   payload: ProvenancePayload,
   filters: MappingFilters,
-) => {
-  const dict = payload.dict;
-  let filtered = payload.mappings
+) =>
+  payload.mappings
     .map((mapping, index) => ({ mapping, index }))
-    .filter(({ mapping }) => mappingMatches(mapping, filters, dict));
-
-  if (filters.sort === "present") {
-    filtered = filtered
-      .slice()
-      .sort(
-        (a, b) => Number(Boolean(b.mapping.p)) - Number(Boolean(a.mapping.p)),
-      );
-  }
-  if (filters.sort === "missing") {
-    filtered = filtered
-      .slice()
-      .sort(
-        (a, b) => Number(Boolean(a.mapping.p)) - Number(Boolean(b.mapping.p)),
-      );
-  }
-  if (filters.sort === "timeline") {
-    filtered = filtered
-      .slice()
-      .sort(
-        (a, b) =>
-          (b.mapping.n ?? b.mapping.ev?.length ?? 0) -
-          (a.mapping.n ?? a.mapping.ev?.length ?? 0) ||
-          mappingLabel(a.mapping, dict).localeCompare(mappingLabel(b.mapping, dict)),
-      );
-  }
-
-  return filtered;
-};
+    .filter(({ mapping }) => mappingMatches(mapping, filters, payload.dict));
 
 export const paginateMappings = (
   mappings: IndexedMapping[],

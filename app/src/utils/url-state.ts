@@ -7,7 +7,6 @@ export const buildDescriptorMappingKey = (
 ) => `${sourceDescriptor}${MAPPING_KEY_SEPARATOR}${targetDescriptor}`;
 
 export const getSelectedMappingKeyFromUrl = (): string | null => {
-  if (typeof window === "undefined") return null;
   const value = new URLSearchParams(window.location.search).get(
     MAPPING_QUERY_PARAM,
   );
@@ -18,7 +17,6 @@ export const setSelectedMappingKeyInUrl = (
   mappingKey: string | null,
   replace = false,
 ) => {
-  if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
   if (!mappingKey) {
     url.searchParams.delete(MAPPING_QUERY_PARAM);
