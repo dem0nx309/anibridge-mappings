@@ -91,12 +91,12 @@ jobs:
         run: |
           set -euo pipefail
           uv_version="$(uv version --short)"
-          cache_month="$(date -u +%Y-%m)"
-          cache_prefix="meta-${uv_version}-${cache_month}-"
+          cache_week="$(date -u +%G-W%V)"
+          cache_prefix="meta-${uv_version}-${cache_week}-"
           cache_key="${cache_prefix}${GITHUB_RUN_ID}"
 
           echo "uv_version=$uv_version" >> "$GITHUB_OUTPUT"
-          echo "cache_month=$cache_month" >> "$GITHUB_OUTPUT"
+          echo "cache_week=$cache_week" >> "$GITHUB_OUTPUT"
           echo "cache_prefix=$cache_prefix" >> "$GITHUB_OUTPUT"
           echo "cache_key=$cache_key" >> "$GITHUB_OUTPUT"
 
