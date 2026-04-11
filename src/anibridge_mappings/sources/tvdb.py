@@ -161,64 +161,6 @@ class BaseTvdbSource(CachedMetadataSource):
             return int(value[:4])
         return None
 
-    def _build_show_scope_meta(
-        self,
-        episodes: Iterable[dict[str, Any]],
-        runtime: int | None,
-        titles: Iterable[object] = (),
-    ) -> dict[str | None, SourceMeta]:
-        """Build per-season metadata from TVDB episodes."""
-        counts: dict[int, int] = {}
-        air_years: dict[int, int] = {}
-        last_air_dates: dict[int, datetime] = {}
-        has_finale: dict[int, bool] = {}
-        for episode in episodes:
-            season_number = self._extract_season_number(episode)
-            if season_number is None:
-                continue
-            counts[season_number] = counts.get(season_number, 0) + 1
-            air_year = self._extract_air_year(episode)
-            if air_year is not None:
-                air_years[season_number] = min(
-                    air_years.get(season_number, air_year),
-                    air_year,
-                )
-
-            air_date = self._extract_air_date(episode)
-            if air_date is not None:
-                current_last = last_air_dates.get(season_number)
-                if current_last is None or air_date > current_last:
-                    last_air_dates[season_number] = air_date
-
-            finale_type = self._extract_finale_type(episode)
-            if finale_type:
-                has_finale[season_number] = True
-
-        normalized_runtime = self._parse_runtime(runtime)
-        normalized_titles = normalize_titles(titles)
-        recent_cutoff = datetime.now(UTC) - timedelta(days=self.RECENT_AIR_DAYS)
-
-        scope_meta: dict[str | None, SourceMeta] = {}
-        for number, count in counts.items():
-            if count <= 0:
-                continue
-
-            last_air = last_air_dates.get(number)
-            complete = bool(has_finale.get(number)) or (
-                last_air is not None and last_air < recent_cutoff
-            )
-            episode_total = count if complete else None
-
-            scope_meta[self._scope_from_season(number)] = SourceMeta(
-                type=SourceType.TV,
-                episodes=episode_total,
-                start_year=air_years.get(number),
-                duration=normalized_runtime,
-                titles=normalized_titles,
-            )
-
-        return scope_meta
-
     @staticmethod
     def _extract_season_number(episode: dict[str, Any]) -> int | None:
         """Extract a season number from a TVDB episode entry."""
@@ -308,6 +250,64 @@ class TvdbShowSource(BaseTvdbSource):
         """
         super().__init__(concurrency=concurrency)
         self._show_cache: dict[str, dict[str | None, SourceMeta] | None] = {}
+
+    def _build_show_scope_meta(
+        self,
+        episodes: Iterable[dict[str, Any]],
+        runtime: int | None,
+        titles: Iterable[object] = (),
+    ) -> dict[str | None, SourceMeta]:
+        """Build per-season metadata from TVDB episodes."""
+        counts: dict[int, int] = {}
+        air_years: dict[int, int] = {}
+        last_air_dates: dict[int, datetime] = {}
+        has_finale: dict[int, bool] = {}
+        for episode in episodes:
+            season_number = self._extract_season_number(episode)
+            if season_number is None:
+                continue
+            counts[season_number] = counts.get(season_number, 0) + 1
+            air_year = self._extract_air_year(episode)
+            if air_year is not None:
+                air_years[season_number] = min(
+                    air_years.get(season_number, air_year),
+                    air_year,
+                )
+
+            air_date = self._extract_air_date(episode)
+            if air_date is not None:
+                current_last = last_air_dates.get(season_number)
+                if current_last is None or air_date > current_last:
+                    last_air_dates[season_number] = air_date
+
+            finale_type = self._extract_finale_type(episode)
+            if finale_type:
+                has_finale[season_number] = True
+
+        normalized_runtime = self._parse_runtime(runtime)
+        normalized_titles = normalize_titles(titles)
+        recent_cutoff = datetime.now(UTC) - timedelta(days=self.RECENT_AIR_DAYS)
+
+        scope_meta: dict[str | None, SourceMeta] = {}
+        for number, count in counts.items():
+            if count <= 0:
+                continue
+
+            last_air = last_air_dates.get(number)
+            complete = bool(has_finale.get(number)) or (
+                last_air is not None and last_air < recent_cutoff
+            )
+            episode_total = count if complete else None
+
+            scope_meta[self._scope_from_season(number)] = SourceMeta(
+                type=SourceType.TV,
+                episodes=episode_total,
+                start_year=air_years.get(number),
+                duration=normalized_runtime,
+                titles=normalized_titles,
+            )
+
+        return scope_meta
 
     async def _fetch_entry(
         self,
