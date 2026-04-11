@@ -198,13 +198,38 @@ jobs:
           path: /tmp/artifact
 
       - name: Download previous mappings.json
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           rm -rf /tmp/prev-release
           mkdir -p /tmp/prev-release
-          gh release download "${{ needs.build.outputs.release_tag }}" --repo "${GITHUB_REPOSITORY}" -p "mappings.json" -D /tmp/prev-release || true
+
+          old_file="/tmp/prev-release/mappings.json"
+          temp_file="${old_file}.tmp"
+          asset_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${{ needs.build.outputs.release_tag }}/mappings.json"
+
+          http_code="$(curl \
+            --silent \
+            --show-error \
+            --location \
+            --retry 5 \
+            --retry-all-errors \
+            --output "$temp_file" \
+            --write-out '%{http_code}' \
+            "$asset_url")"
+
+          if [ "$http_code" = "200" ]; then
+            mv "$temp_file" "$old_file"
+            exit 0
+          fi
+
+          rm -f "$temp_file"
+
+          if [ "$http_code" = "404" ]; then
+            exit 0
+          fi
+
+          echo "Failed to download previous mappings.json from $asset_url (HTTP $http_code)" >&2
+          exit 1
 
       - name: Compute mappings diff
         run: |
