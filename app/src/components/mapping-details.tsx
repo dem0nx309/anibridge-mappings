@@ -1,28 +1,27 @@
+import { useEffect, useMemo, useState } from "hono/jsx/dom";
 import type {
   ExternalLink,
   MappingViewFormat,
   TimelineSlide,
 } from "./ui-types";
-import { stepLabel } from "../utils/mapping-presentation";
+import {
+  buildFinalMappingObject,
+  buildTimelineSlides,
+  descriptorToExternal,
+  formatMappingView,
+} from "../utils/mapping-presentation";
 
 import type { Dict, Mapping } from "../utils/provenance";
 import { getDictValue } from "../utils/provenance";
-type MappingDetailsProps = {
-  dict: Dict;
-  selected: Mapping;
-  selectedSource: string;
-  selectedTarget: string;
-  selectedSourceExternal: ExternalLink | null;
-  selectedTargetExternal: ExternalLink | null;
-  mappingViewFormat: MappingViewFormat;
-  onMappingViewFormatChange: (format: MappingViewFormat) => void;
-  finalMappingView: string;
-  timelineOpen: boolean;
-  onTimelineToggle: (open: boolean) => void;
-  timelineSlides: TimelineSlide[];
-  timelineStep: number;
-  setTimelineStep: (updater: (prev: number) => number) => void;
+
+const MAPPING_VIEW_FORMAT_STORAGE_KEY = "anibridge:mapping-view-format";
+
+const getStoredFormat = (): MappingViewFormat => {
+  const v = window.localStorage.getItem(MAPPING_VIEW_FORMAT_STORAGE_KEY);
+  return v === "yaml" ? "yaml" : "json";
 };
+
+type MappingDetailsProps = { dict: Dict; selected: Mapping };
 
 const DescriptorLink = ({
   value,
@@ -62,22 +61,37 @@ const DescriptorLink = ({
   );
 };
 
-export const MappingDetails = ({
-  dict,
-  selected,
-  selectedSource,
-  selectedTarget,
-  selectedSourceExternal,
-  selectedTargetExternal,
-  mappingViewFormat,
-  onMappingViewFormatChange,
-  finalMappingView,
-  timelineOpen,
-  onTimelineToggle,
-  timelineSlides,
-  timelineStep,
-  setTimelineStep,
-}: MappingDetailsProps) => {
+export const MappingDetails = ({ dict, selected }: MappingDetailsProps) => {
+  const [mappingViewFormat, setMappingViewFormat] =
+    useState<MappingViewFormat>(getStoredFormat);
+  const [timelineOpen, setTimelineOpen] = useState(false);
+  const [timelineStep, setTimelineStep] = useState(0);
+
+  const selectedSource = getDictValue(dict, "descriptors", selected.s);
+  const selectedTarget = getDictValue(dict, "descriptors", selected.t);
+  const selectedSourceExternal = descriptorToExternal(selectedSource);
+  const selectedTargetExternal = descriptorToExternal(selectedTarget);
+
+  const finalMappingView = useMemo(() => {
+    const obj = buildFinalMappingObject(dict, selected);
+    return formatMappingView(obj, mappingViewFormat);
+  }, [dict, selected, mappingViewFormat]);
+
+  const timelineSlides = useMemo(() => {
+    if (!timelineOpen) return [];
+    return buildTimelineSlides(dict, selected);
+  }, [timelineOpen, dict, selected]);
+
+  useEffect(() => {
+    setTimelineStep(timelineSlides.length ? timelineSlides.length - 1 : 0);
+  }, [timelineSlides.length]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      MAPPING_VIEW_FORMAT_STORAGE_KEY,
+      mappingViewFormat,
+    );
+  }, [mappingViewFormat]);
   const timelineCurrent = timelineSlides[timelineStep] ?? null;
 
   return (
@@ -125,7 +139,7 @@ export const MappingDetails = ({
                     ? "border-sky-700 bg-sky-50 text-sky-800 dark:border-sky-300 dark:bg-sky-950/30 dark:text-sky-200"
                     : "border-slate-400 bg-white text-slate-700 dark:border-slate-500 dark:bg-slate-800 dark:text-slate-300"
                 }`}
-                onClick={() => onMappingViewFormatChange("json")}
+                onClick={() => setMappingViewFormat("json")}
               >
                 JSON
               </button>
@@ -136,7 +150,7 @@ export const MappingDetails = ({
                     ? "border-sky-700 bg-sky-50 text-sky-800 dark:border-sky-300 dark:bg-sky-950/30 dark:text-sky-200"
                     : "border-slate-400 bg-white text-slate-700 dark:border-slate-500 dark:bg-slate-800 dark:text-slate-300"
                 }`}
-                onClick={() => onMappingViewFormatChange("yaml")}
+                onClick={() => setMappingViewFormat("yaml")}
               >
                 YAML
               </button>
@@ -151,7 +165,7 @@ export const MappingDetails = ({
       <details
         open={timelineOpen}
         onToggle={(event: MouseEvent) =>
-          onTimelineToggle((event.currentTarget as HTMLDetailsElement).open)
+          setTimelineOpen((event.currentTarget as HTMLDetailsElement).open)
         }
         class="mt-2 border border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-800"
       >
@@ -176,7 +190,22 @@ export const MappingDetails = ({
               >
                 Older
               </button>
-              <span>{stepLabel(timelineStep + 1, timelineSlides.length)}</span>
+              <span class="inline-flex items-center gap-0.5">
+                Step{" "}
+                <input
+                  type="number"
+                  min={1}
+                  max={timelineSlides.length}
+                  value={timelineStep + 1}
+                  onInput={(e) => {
+                    const v = Number((e.target as HTMLInputElement).value);
+                    if (v >= 1 && v <= timelineSlides.length)
+                      setTimelineStep(v - 1);
+                  }}
+                  class="w-10 border border-slate-400 bg-white px-1 py-0.5 text-center text-xs dark:border-slate-500 dark:bg-slate-800"
+                />
+                <span>/ {timelineSlides.length}</span>
+              </span>
               <button
                 type="button"
                 disabled={timelineStep >= timelineSlides.length - 1}

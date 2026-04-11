@@ -11,43 +11,20 @@ import {
 import { FiltersBar } from "./filters-bar";
 import { MappingDetails } from "./mapping-details";
 import { MappingsTable } from "./mappings-table";
-import type {
-  MappingViewFormat,
-  MappingWithId,
-  SortColumn,
-  SortDirection,
-} from "./ui-types";
-import {
-  buildFinalMappingObject,
-  buildTimelineSlides,
-  descriptorToExternal,
-  formatMappingView,
-} from "../utils/mapping-presentation";
+import type { MappingWithId, SortColumn, SortDirection } from "./ui-types";
 import {
   buildDescriptorMappingKey,
   getSelectedMappingKeyFromUrl,
   setSelectedMappingKeyInUrl,
 } from "../utils/url-state";
 
-const MAPPING_VIEW_FORMAT_STORAGE_KEY = "anibridge:mapping-view-format";
-
 const DEFAULT_FILTERS: MappingFilters = {
   source: "",
   target: "",
-  actor: "",
-  reason: "",
-  range: "",
   stage: "all",
-  present: "present",
-  sort: "default",
+  present: "all",
   page: 1,
   perPage: 50,
-};
-
-const getMappingViewFormatFromStorage = (): MappingViewFormat => {
-  if (typeof window === "undefined") return "json";
-  const stored = window.localStorage.getItem(MAPPING_VIEW_FORMAT_STORAGE_KEY);
-  return stored === "yaml" ? "yaml" : "json";
 };
 
 const mappingDescriptorKey = (
@@ -68,11 +45,6 @@ export const App = () => {
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [selectedKey, setSelectedKey] = useState<string | null>(() =>
     getSelectedMappingKeyFromUrl(),
-  );
-  const [timelineOpen, setTimelineOpen] = useState(false);
-  const [timelineStep, setTimelineStep] = useState(0);
-  const [mappingViewFormat, setMappingViewFormat] = useState<MappingViewFormat>(
-    getMappingViewFormatFromStorage,
   );
 
   useEffect(() => {
@@ -169,7 +141,6 @@ export const App = () => {
 
     if (!filtered.length) {
       setSelectedKey(null);
-      setTimelineOpen(false);
       return;
     }
 
@@ -194,18 +165,6 @@ export const App = () => {
     setSelectedMappingKeyInUrl(selectedKey, true);
   }, [selectedKey]);
 
-  useEffect(() => {
-    setTimelineOpen(false);
-  }, [selectedKey]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(
-      MAPPING_VIEW_FORMAT_STORAGE_KEY,
-      mappingViewFormat,
-    );
-  }, [mappingViewFormat]);
-
   const selectedEntry = useMemo(
     () =>
       payload
@@ -218,37 +177,6 @@ export const App = () => {
   );
 
   const selected = selectedEntry?.mapping ?? null;
-
-  const selectedSource =
-    payload && selected
-      ? getDictValue(payload.dict, "descriptors", selected.s)
-      : "";
-  const selectedTarget =
-    payload && selected
-      ? getDictValue(payload.dict, "descriptors", selected.t)
-      : "";
-
-  const selectedSourceExternal = descriptorToExternal(selectedSource);
-  const selectedTargetExternal = descriptorToExternal(selectedTarget);
-
-  const finalMappingView = useMemo(() => {
-    if (!payload || !selected) return "";
-    const mappingObject = buildFinalMappingObject(payload.dict, selected);
-    return formatMappingView(mappingObject, mappingViewFormat);
-  }, [payload, selected, mappingViewFormat]);
-
-  const timelineSlides = useMemo(() => {
-    if (!timelineOpen || !payload || !selected) return [];
-    return buildTimelineSlides(payload.dict, selected);
-  }, [timelineOpen, payload, selected]);
-
-  useEffect(() => {
-    if (!timelineSlides.length) {
-      setTimelineStep(0);
-      return;
-    }
-    setTimelineStep(timelineSlides.length - 1);
-  }, [timelineSlides.length, timelineOpen, selectedKey]);
 
   const updateFilter = (key: keyof MappingFilters, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value, page: 1 }));
@@ -316,26 +244,15 @@ export const App = () => {
               setSelectedMappingKeyInUrl(mappingKey);
               setSelectedKey(mappingKey);
             }}
-            paged={{ page: paged.page, pages: paged.pages }}
+            paged={{ page: paged.page, pages: paged.pages, total: paged.total }}
             setFilters={(updater) => setFilters(updater)}
           />
 
           {selected ? (
             <MappingDetails
+              key={selectedKey}
               dict={payload.dict}
               selected={selected}
-              selectedSource={selectedSource}
-              selectedTarget={selectedTarget}
-              selectedSourceExternal={selectedSourceExternal}
-              selectedTargetExternal={selectedTargetExternal}
-              mappingViewFormat={mappingViewFormat}
-              onMappingViewFormatChange={setMappingViewFormat}
-              finalMappingView={finalMappingView}
-              timelineOpen={timelineOpen}
-              onTimelineToggle={setTimelineOpen}
-              timelineSlides={timelineSlides}
-              timelineStep={timelineStep}
-              setTimelineStep={setTimelineStep}
             />
           ) : (
             <main class="min-h-0 overflow-auto border border-slate-300 bg-slate-50 p-2 text-sm text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
