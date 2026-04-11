@@ -1,8 +1,8 @@
-import type {
-  PresenceFilter,
-  ProvenancePayload,
-  MappingFilters,
-} from "../utils/provenance";
+import type { PresenceFilter, MappingFilters } from "../utils/provenance";
+import type { ProvenancePayload } from "../utils/provenance";
+
+const INPUT_CLASS =
+  "w-full border border-slate-400 bg-white px-2 py-1 text-xs outline-none focus:border-sky-700 dark:border-slate-500 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-sky-300";
 
 type FiltersBarProps = {
   payload: ProvenancePayload;
@@ -23,7 +23,7 @@ export const FiltersBar = ({
           onFilterChange("source", (event.target as HTMLInputElement).value)
         }
         placeholder="source descriptor"
-        class="w-full border border-slate-400 bg-white px-2 py-1 text-xs outline-none focus:border-sky-700 dark:border-slate-500 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-sky-300"
+        class={INPUT_CLASS}
       />
       <input
         value={filters.target}
@@ -31,14 +31,14 @@ export const FiltersBar = ({
           onFilterChange("target", (event.target as HTMLInputElement).value)
         }
         placeholder="target descriptor"
-        class="w-full border border-slate-400 bg-white px-2 py-1 text-xs outline-none focus:border-sky-700 dark:border-slate-500 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-sky-300"
+        class={INPUT_CLASS}
       />
       <select
         value={filters.stage}
         onChange={(event) =>
           onFilterChange("stage", (event.target as HTMLSelectElement).value)
         }
-        class="w-full border border-slate-400 bg-white px-2 py-1 text-xs outline-none focus:border-sky-700 dark:border-slate-500 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-sky-300"
+        class={INPUT_CLASS}
       >
         <option value="all">all stages</option>
         {payload.dict.stages.map((stage) => (
@@ -55,7 +55,7 @@ export const FiltersBar = ({
             (event.target as HTMLSelectElement).value as PresenceFilter,
           )
         }
-        class="w-full border border-slate-400 bg-white px-2 py-1 text-xs outline-none focus:border-sky-700 dark:border-slate-500 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-sky-300"
+        class={INPUT_CLASS}
       >
         <option value="present">present</option>
         <option value="missing">missing</option>

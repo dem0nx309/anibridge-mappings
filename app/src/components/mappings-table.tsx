@@ -9,7 +9,7 @@ type MappingsTableProps = {
   sortLabel: (column: SortColumn) => string;
   onSort: (column: SortColumn) => void;
   onSelect: (mappingKey: string) => void;
-  paged: { page: number; pages: number };
+  paged: { page: number; pages: number; total: number };
   setFilters: (updater: (prev: MappingFilters) => MappingFilters) => void;
 };
 
@@ -25,9 +25,9 @@ export const MappingsTable = ({
 }: MappingsTableProps) => {
   return (
     <aside class="flex min-h-0 flex-col border border-slate-300 bg-slate-50 dark:border-slate-600 dark:bg-slate-800">
-      <div class="grid grid-cols-[88px_minmax(0,1fr)_minmax(0,1fr)_64px] border-b border-slate-300 bg-slate-200 px-2 py-1 text-[11px] uppercase tracking-[0.03em] text-slate-600 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300">
+      <div class="grid grid-cols-[48px_minmax(0,1fr)_minmax(0,1fr)_56px] border-b border-slate-300 bg-slate-200 px-2 py-1 text-[11px] uppercase tracking-[0.03em] text-slate-600 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300">
         <button type="button" class="text-left" onClick={() => onSort("state")}>
-          {`STATE${sortLabel("state")}`}
+          {sortLabel("state")}
         </button>
         <button
           type="button"
@@ -63,14 +63,19 @@ export const MappingsTable = ({
             <button
               type="button"
               key={mapping.id}
-              class={`grid w-full grid-cols-[88px_minmax(0,1fr)_minmax(0,1fr)_64px] border-b border-slate-200 px-2 py-1 text-left text-[12px] ${
+              class={`grid w-full grid-cols-[48px_minmax(0,1fr)_minmax(0,1fr)_56px] border-b border-slate-200 px-2 py-1 text-left text-[12px] ${
                 active
                   ? "bg-sky-100 dark:bg-sky-800/35"
                   : "bg-white hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700"
               }`}
               onClick={() => onSelect(mapping.key)}
             >
-              <span class="truncate">{mapping.p ? "present" : "missing"}</span>
+              <span class="flex items-center">
+                <span
+                  class={`inline-block h-2 w-2 rounded-full ${mapping.p ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-500"}`}
+                  title={mapping.p ? "present" : "missing"}
+                />
+              </span>
               <span class="truncate">{source}</span>
               <span class="truncate">{target}</span>
               <span class="text-right">{steps}</span>
@@ -93,8 +98,22 @@ export const MappingsTable = ({
         >
           Prev
         </button>
-        <span>
-          Page {paged.page} / {paged.pages}
+        <span class="inline-flex items-center gap-0.5">
+          <input
+            type="number"
+            min={1}
+            max={paged.pages}
+            value={paged.page}
+            onInput={(e) => {
+              const v = Number((e.target as HTMLInputElement).value);
+              if (v >= 1 && v <= paged.pages)
+                setFilters((prev) => ({ ...prev, page: v }));
+            }}
+            class="w-10 border border-slate-400 bg-white px-1 py-0.5 text-center text-xs dark:border-slate-500 dark:bg-slate-800"
+          />
+          <span>
+            /{paged.pages} ({paged.total.toLocaleString()})
+          </span>
         </span>
         <button
           type="button"
