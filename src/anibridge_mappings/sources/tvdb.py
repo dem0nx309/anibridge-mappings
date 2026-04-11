@@ -3,7 +3,7 @@
 import asyncio
 import os
 from collections.abc import Iterable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from logging import getLogger
 from typing import Any
 
@@ -23,8 +23,7 @@ class BaseTvdbSource(CachedMetadataSource):
     LOGIN_ENDPOINT = f"{API_ROOT}/login"
     API_KEY_ENV = "TVDB_API_KEY"
     API_PIN_ENV = "TVDB_PIN"
-    RECENT_AIR_DAYS = 180
-    CACHE_VERSION = 4
+    CACHE_VERSION = 5
 
     _ALLOWED_ALIAS_LANGUAGES = frozenset({"eng", "jpn", "zho"})
 
@@ -39,6 +38,7 @@ class BaseTvdbSource(CachedMetadataSource):
         """
         super().__init__(concurrency=concurrency)
         self._token: str | None = None
+        self._today = datetime.now(UTC).date()
 
     async def prepare(self) -> None:
         """Load cache data and validate TVDB authentication."""
@@ -193,17 +193,6 @@ class BaseTvdbSource(CachedMetadataSource):
             return parsed.replace(tzinfo=UTC)
         return parsed.astimezone(UTC)
 
-    @staticmethod
-    def _extract_finale_type(episode: dict[str, Any]) -> str | None:
-        """Extract a finale type label from a TVDB episode entry."""
-        raw = episode.get("finaleType")
-        if not raw:
-            return None
-        text = raw.strip().lower()
-        if text in {"season", "series"}:
-            return text
-        return None
-
     def _build_movie_meta(
         self,
         runtime: int | None,
@@ -261,7 +250,6 @@ class TvdbShowSource(BaseTvdbSource):
         counts: dict[int, int] = {}
         air_years: dict[int, int] = {}
         last_air_dates: dict[int, datetime] = {}
-        has_finale: dict[int, bool] = {}
         for episode in episodes:
             season_number = self._extract_season_number(episode)
             if season_number is None:
@@ -280,24 +268,21 @@ class TvdbShowSource(BaseTvdbSource):
                 if current_last is None or air_date > current_last:
                     last_air_dates[season_number] = air_date
 
-            finale_type = self._extract_finale_type(episode)
-            if finale_type:
-                has_finale[season_number] = True
-
         normalized_runtime = self._parse_runtime(runtime)
         normalized_titles = normalize_titles(titles)
-        recent_cutoff = datetime.now(UTC) - timedelta(days=self.RECENT_AIR_DAYS)
 
         scope_meta: dict[str | None, SourceMeta] = {}
         for number, count in counts.items():
             if count <= 0:
                 continue
 
+            # Usually, if a TVDB season hasn't aired and only has one episode, it's an
+            # upcoming and incomplete season entry.
             last_air = last_air_dates.get(number)
-            complete = bool(has_finale.get(number)) or (
-                last_air is not None and last_air < recent_cutoff
+            is_incomplete = count <= 1 and (
+                not last_air or (last_air and last_air.date() > self._today)
             )
-            episode_total = count if complete else None
+            episode_total = count if not is_incomplete else None
 
             scope_meta[self._scope_from_season(number)] = SourceMeta(
                 type=SourceType.TV,

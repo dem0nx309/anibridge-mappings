@@ -1,5 +1,5 @@
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import UTC
 
 import aiohttp
 import pytest
@@ -71,24 +71,7 @@ def test_tvdb_parse_helpers() -> None:
     dt = BaseTvdbSource._extract_air_date({"aired": "2020-05-01"})
     assert dt is not None and dt.tzinfo == UTC
 
-    assert BaseTvdbSource._extract_finale_type({"finaleType": "season"}) == "season"
     assert BaseTvdbSource._extract_season_number({"seasonNumber": 2}) == 2
-
-
-def test_tvdb_build_show_scope_meta_marks_recent_incomplete() -> None:
-    source = DummyTvdbSource()
-    recent = (datetime.now(UTC) - timedelta(days=10)).date().isoformat()
-
-    episodes = [
-        {"seasonNumber": 1, "aired": "2010-01-01", "finaleType": "season"},
-        {"seasonNumber": 1, "aired": "2010-01-08"},
-        {"seasonNumber": 2, "aired": recent},
-    ]
-
-    scope_meta = source._build_show_scope_meta(episodes, 24, ["Show Title"])
-    assert scope_meta["s1"].episodes == 2
-    assert scope_meta["s2"].episodes is None
-    assert scope_meta["s1"].titles == ("Show Title",)
 
 
 def test_tvdb_movie_and_show_response_parsing() -> None:
@@ -111,9 +94,6 @@ def test_tvdb_extract_helpers_cover_edge_cases() -> None:
         is not None
     )
     assert BaseTvdbSource._extract_air_date({"aired": "not-a-date"}) is None
-
-    assert BaseTvdbSource._extract_finale_type({"finaleType": "series"}) == "series"
-    assert BaseTvdbSource._extract_finale_type({"finaleType": "other"}) is None
 
 
 def test_tvdb_request_json_and_token_branches(monkeypatch) -> None:
