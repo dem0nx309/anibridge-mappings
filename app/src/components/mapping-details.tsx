@@ -21,7 +21,12 @@ const getStoredFormat = (): MappingViewFormat => {
   return v === "yaml" ? "yaml" : "json";
 };
 
-type MappingDetailsProps = { dict: Dict; selected: Mapping };
+type MappingDetailsProps = {
+  dict: Dict;
+  selected: Mapping;
+  inEdits: boolean | null;
+  onJumpToEdits: () => void;
+};
 
 const DescriptorLink = ({
   value,
@@ -61,7 +66,12 @@ const DescriptorLink = ({
   );
 };
 
-export const MappingDetails = ({ dict, selected }: MappingDetailsProps) => {
+export const MappingDetails = ({
+  dict,
+  selected,
+  inEdits,
+  onJumpToEdits,
+}: MappingDetailsProps) => {
   const [mappingViewFormat, setMappingViewFormat] =
     useState<MappingViewFormat>(getStoredFormat);
   const [timelineOpen, setTimelineOpen] = useState(false);
@@ -96,7 +106,7 @@ export const MappingDetails = ({ dict, selected }: MappingDetailsProps) => {
 
   return (
     <main class="min-h-0 overflow-auto border border-slate-300 bg-slate-50 p-2 dark:border-slate-600 dark:bg-slate-800">
-      <div class="grid gap-2 border border-slate-300 bg-slate-100 p-2 md:grid-cols-3 dark:border-slate-600 dark:bg-slate-700">
+      <div class="grid gap-2 border border-slate-300 bg-slate-100 p-2 md:grid-cols-4 dark:border-slate-600 dark:bg-slate-700">
         <div>
           <div class="text-[11px] uppercase text-slate-600 dark:text-slate-300">
             Source
@@ -121,6 +131,49 @@ export const MappingDetails = ({ dict, selected }: MappingDetailsProps) => {
           </div>
           <div class="mt-0.5 font-mono text-xs">
             {selected.p ? "present" : "missing"}
+          </div>
+        </div>
+        <div>
+          <div class="text-[11px] uppercase text-slate-600 dark:text-slate-300">
+            Edits
+          </div>
+          <div class="mt-0.5 flex items-center gap-1.5">
+            {inEdits === null ? (
+              <span class="font-mono text-xs text-slate-400">...</span>
+            ) : inEdits ? (
+              <>
+                <span class="inline-flex items-center gap-1 font-mono text-xs text-emerald-700 dark:text-emerald-400">
+                  <span class="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                  in edits
+                </span>
+                <button
+                  type="button"
+                  class="inline-flex items-center gap-0.5 border border-slate-400 bg-white px-1.5 py-0.5 text-[10px] text-slate-600 hover:border-sky-600 hover:text-sky-700 dark:border-slate-500 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-sky-400 dark:hover:text-sky-300"
+                  onClick={onJumpToEdits}
+                  title="Open YAML editor and jump to this mapping"
+                >
+                  Jump to
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    class="h-2.5 w-2.5"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M7 17 17 7" />
+                    <path d="M9 7h8v8" />
+                  </svg>
+                </button>
+              </>
+            ) : (
+              <span class="inline-flex items-center gap-1 font-mono text-xs text-slate-500 dark:text-slate-400">
+                <span class="inline-block h-2 w-2 rounded-full bg-slate-300 dark:bg-slate-500" />
+                not in edits
+              </span>
+            )}
           </div>
         </div>
       </div>

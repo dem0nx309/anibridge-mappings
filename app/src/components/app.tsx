@@ -11,12 +11,14 @@ import {
 import { FiltersBar } from "./filters-bar";
 import { MappingDetails } from "./mapping-details";
 import { MappingsTable } from "./mappings-table";
+import { YamlEditor } from "./yaml-editor";
 import type { MappingWithId, SortColumn, SortDirection } from "./ui-types";
 import {
   buildDescriptorMappingKey,
   getSelectedMappingKeyFromUrl,
   setSelectedMappingKeyInUrl,
 } from "../utils/url-state";
+import { fetchEditsYaml, mappingExistsInEdits } from "../utils/edits-yaml";
 
 const DEFAULT_FILTERS: MappingFilters = {
   source: "",
@@ -46,6 +48,11 @@ export const App = () => {
   const [selectedKey, setSelectedKey] = useState<string | null>(() =>
     getSelectedMappingKeyFromUrl(),
   );
+  const [yamlEditorOpen, setYamlEditorOpen] = useState(false);
+  const [jumpToEditsKey, setJumpToEditsKey] = useState(0);
+  const [editsYaml, setEditsYaml] = useState<string>("");
+  const [editsLoading, setEditsLoading] = useState(true);
+  const [editsError, setEditsError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -70,6 +77,37 @@ export const App = () => {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    fetchEditsYaml()
+      .then((text) => {
+        if (active) {
+          setEditsYaml(text);
+          setEditsError(null);
+        }
+      })
+      .catch((err) => {
+        if (active)
+          setEditsError(
+            err instanceof Error ? err.message : "Failed to load YAML",
+          );
+      })
+      .finally(() => {
+        if (active) setEditsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const selectedInEdits = useMemo(
+    () =>
+      selectedKey && editsYaml
+        ? mappingExistsInEdits(editsYaml, selectedKey)
+        : null,
+    [selectedKey, editsYaml],
+  );
 
   const summary = useMemo(
     () => (payload ? summarizeProvenance(payload) : null),
@@ -214,16 +252,33 @@ export const App = () => {
 
   return (
     <div class="h-screen bg-slate-100 p-2.5 text-[13px] leading-[1.35] text-slate-800 dark:bg-slate-900 dark:text-slate-100">
-      <div class="mx-auto grid h-full max-w-[1460px] grid-rows-[auto_auto_1fr] gap-2 font-['Segoe_UI',Tahoma,'Trebuchet_MS',sans-serif]">
+      <div
+        class={`mx-auto grid h-full grid-rows-[auto_auto_1fr] gap-2 font-['Segoe_UI',Tahoma,'Trebuchet_MS',sans-serif] ${
+          yamlEditorOpen ? "max-w-[2200px]" : "max-w-[1460px]"
+        }`}
+      >
         <header class="border border-slate-300 bg-slate-50 px-3 py-2 dark:border-slate-600 dark:bg-slate-800">
           <h1 class="m-0 mb-1 text-[15px] font-bold tracking-[0.02em]">
             AniBridge Mappings
           </h1>
-          <div class="flex flex-wrap gap-3 text-slate-600 dark:text-slate-300">
-            <span>Generated: {summary.generated_on ?? "unknown"}</span>
-            <span>Total: {summary.mappings.toLocaleString()}</span>
-            <span>Present: {summary.present_mappings.toLocaleString()}</span>
-            <span>Missing: {summary.missing_mappings.toLocaleString()}</span>
+          <div class="flex items-center justify-between">
+            <div class="flex flex-wrap gap-3 text-slate-600 dark:text-slate-300">
+              <span>Generated: {summary.generated_on ?? "unknown"}</span>
+              <span>Total: {summary.mappings.toLocaleString()}</span>
+              <span>Present: {summary.present_mappings.toLocaleString()}</span>
+              <span>Missing: {summary.missing_mappings.toLocaleString()}</span>
+            </div>
+            <button
+              type="button"
+              class={`border px-2.5 py-1 text-xs ${
+                yamlEditorOpen
+                  ? "border-sky-700 bg-sky-50 text-sky-800 dark:border-sky-300 dark:bg-sky-950/30 dark:text-sky-200"
+                  : "border-slate-400 bg-white text-slate-700 dark:border-slate-500 dark:bg-slate-800 dark:text-slate-300"
+              }`}
+              onClick={() => setYamlEditorOpen((prev) => !prev)}
+            >
+              {yamlEditorOpen ? "Hide YAML Editor" : "YAML Editor"}
+            </button>
           </div>
         </header>
 
@@ -233,7 +288,13 @@ export const App = () => {
           onFilterChange={updateFilter}
         />
 
-        <section class="grid min-h-0 grid-cols-1 gap-2 xl:grid-cols-[48%_52%]">
+        <section
+          class={`grid min-h-0 grid-cols-1 gap-2 ${
+            yamlEditorOpen
+              ? "xl:grid-cols-[5fr_6fr_6fr]"
+              : "xl:grid-cols-[48fr_52fr]"
+          }`}
+        >
           <MappingsTable
             dict={payload.dict}
             rows={rows}
@@ -253,11 +314,26 @@ export const App = () => {
               key={selectedKey}
               dict={payload.dict}
               selected={selected}
+              inEdits={selectedInEdits}
+              onJumpToEdits={() => {
+                if (!yamlEditorOpen) setYamlEditorOpen(true);
+                setJumpToEditsKey((k) => k + 1);
+              }}
             />
           ) : (
             <main class="min-h-0 overflow-auto border border-slate-300 bg-slate-50 p-2 text-sm text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
               No mapping selected.
             </main>
+          )}
+
+          {yamlEditorOpen && (
+            <YamlEditor
+              selectedKey={selectedKey}
+              jumpKey={jumpToEditsKey}
+              yamlContent={editsYaml}
+              loading={editsLoading}
+              error={editsError}
+            />
           )}
         </section>
       </div>

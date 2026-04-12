@@ -6,6 +6,16 @@ export const buildDescriptorMappingKey = (
   targetDescriptor: string,
 ) => `${sourceDescriptor}${MAPPING_KEY_SEPARATOR}${targetDescriptor}`;
 
+export const parseMappingKey = (
+  key: string,
+): { source: string; target: string } | null => {
+  const idx = key.indexOf(MAPPING_KEY_SEPARATOR);
+  if (idx < 0) return null;
+  const source = key.slice(0, idx);
+  const target = key.slice(idx + MAPPING_KEY_SEPARATOR.length);
+  return source && target ? { source, target } : null;
+};
+
 export const getSelectedMappingKeyFromUrl = (): string | null => {
   const value = new URLSearchParams(window.location.search).get(
     MAPPING_QUERY_PARAM,
