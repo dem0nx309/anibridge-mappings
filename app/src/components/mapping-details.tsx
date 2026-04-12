@@ -425,7 +425,7 @@ export const MappingDetails = ({
 
   useEffect(() => {
     setTimelineStep(timelineSlides.length ? timelineSlides.length - 1 : 0);
-  }, [timelineSlides.length]);
+  }, [selected, timelineSlides.length]);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -459,13 +459,6 @@ export const MappingDetails = ({
       active = false;
     };
   }, [metadataOpen, selectedSource, selectedTarget]);
-
-  useEffect(() => {
-    setMetadataOpen(false);
-    setMetadataLoading(false);
-    setSourceEnvelope(null);
-    setTargetEnvelope(null);
-  }, [selectedSource, selectedTarget]);
 
   const timelineCurrent = timelineSlides[timelineStep] ?? null;
 

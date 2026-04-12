@@ -311,7 +311,6 @@ export const App = () => {
 
           {selected ? (
             <MappingDetails
-              key={selectedKey}
               dict={payload.dict}
               selected={selected}
               inEdits={selectedInEdits}
