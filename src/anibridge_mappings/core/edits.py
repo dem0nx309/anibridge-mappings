@@ -50,7 +50,7 @@ def load_edits(edits_file: Path | str) -> dict[str, Any]:
             edits = yaml.load(f) or {}
 
         if isinstance(edits, CommentedMap):
-            edits["$schema"] = {
+            edits["$meta"] = {
                 "version": DoubleQuotedScalarString(
                     importlib.metadata.version("anibridge-mappings")
                 )

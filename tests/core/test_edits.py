@@ -85,7 +85,7 @@ def test_apply_edits_clears_edges_when_ranges_empty() -> None:
     assert not graph.has_edge(source, target)
 
 
-def test_load_edits_formats_commented_map_and_injects_schema(
+def test_load_edits_formats_commented_map_and_injects_meta(
     monkeypatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr("importlib.metadata.version", lambda _name: "9.9.9")
@@ -98,8 +98,8 @@ def test_load_edits_formats_commented_map_and_injects_schema(
 
     payload = load_edits(path)
 
-    assert "$schema" in payload
-    assert payload["$schema"]["version"] == "9.9.9"
+    assert "$meta" in payload
+    assert payload["$meta"]["version"] == "9.9.9"
     text = path.read_text(encoding="utf-8")
     assert '"1"' in text
 
