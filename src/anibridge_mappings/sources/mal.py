@@ -20,8 +20,8 @@ mal_limiter = Limiter(rate=1, capacity=1)
 class MalSource(CachedMetadataSource):
     """Collect MAL metadata by crawling the anime ranking endpoint."""
 
-    TOKEN_URL = "https://myanimelist.net/v1/oauth2/token"
     API_URL = "https://api.myanimelist.net/v2/anime/ranking"
+    DEFAULT_CLIENT_ID = "b11a4e1ead0db8142268906b4bb676a4"
 
     CACHE_VERSION = 2
 
@@ -47,7 +47,6 @@ class MalSource(CachedMetadataSource):
     def __init__(self) -> None:
         """Initialize the MAL metadata source."""
         super().__init__(concurrency=1)
-        self._access_token: str | None = None
 
     async def prepare(self) -> None:
         """Load the cached MAL dataset or crawl it when missing."""
@@ -55,18 +54,12 @@ class MalSource(CachedMetadataSource):
         if self._cache:
             return
 
-        client_id = os.environ.get("MAL_CLIENT_ID", "b11a4e1ead0db8142268906b4bb676a4")
-        refresh_token = os.environ.get("MAL_API_KEY")
-        if not client_id or not refresh_token:
-            raise RuntimeError(
-                "MAL metadata fetches require MAL_CLIENT_ID and MAL_API_KEY"
-            )
+        client_id = (os.environ.get("MAL_CLIENT_ID") or self.DEFAULT_CLIENT_ID).strip()
+        if not client_id:
+            raise RuntimeError("MAL metadata fetches require MAL_CLIENT_ID")
 
         async with aiohttp.ClientSession() as session:
-            token = await self._get_or_fetch_access_token(
-                session, client_id.strip(), refresh_token.strip()
-            )
-            self._cache = await self._fetch_ranking_cache(session, token)
+            self._cache = await self._fetch_ranking_cache(session, client_id)
 
         self._persist_cache()
 
@@ -77,57 +70,17 @@ class MalSource(CachedMetadataSource):
         """Mark uncached MAL IDs as absent once the ranking crawl is complete."""
         return [(entry_id, None, True) for entry_id, _scope in entry_ids]
 
-    async def _get_or_fetch_access_token(
-        self,
-        session: aiohttp.ClientSession,
-        client_id: str,
-        refresh_token: str,
-    ) -> str:
-        """Refresh and cache a MAL access token."""
-        if self._access_token:
-            return self._access_token
-
-        payload: dict[str, str] = {
-            "grant_type": "refresh_token",
-            "refresh_token": refresh_token,
-            "client_id": client_id,
-        }
-
-        while True:
-            await mal_limiter.acquire(asynchronous=True)
-            async with session.post(self.TOKEN_URL, data=payload) as response:
-                if response.status == 429:
-                    retry = int(response.headers.get("Retry-After", "2"))
-                    log.warning("MAL auth rate limit hit; sleeping %s", retry)
-                    await asyncio.sleep(retry + 1)
-                    continue
-
-                try:
-                    response.raise_for_status()
-                except aiohttp.ClientResponseError as exc:
-                    raise RuntimeError(f"MAL token refresh failed: {exc}") from exc
-
-                payload_data: dict[str, Any] = await response.json()
-                token = payload_data.get("access_token")
-                if not isinstance(token, str) or not token.strip():
-                    raise RuntimeError(
-                        "MAL token refresh response missing access_token"
-                    )
-
-                self._access_token = token.strip()
-                return self._access_token
-
     async def _fetch_ranking_cache(
         self,
         session: aiohttp.ClientSession,
-        token: str,
+        client_id: str,
     ) -> dict[str, dict[str | None, SourceMeta] | None]:
         """Fetch the entire MAL anime ranking listing into the metadata cache."""
         cache: dict[str, dict[str | None, SourceMeta] | None] = {}
         offset = 0
 
         while True:
-            payload = await self._request_ranking_page(session, token, offset)
+            payload = await self._request_ranking_page(session, client_id, offset)
             data = payload.get("data") or []
 
             for entry in data:
@@ -144,7 +97,7 @@ class MalSource(CachedMetadataSource):
     async def _request_ranking_page(
         self,
         session: aiohttp.ClientSession,
-        token: str,
+        client_id: str,
         offset: int,
     ) -> dict[str, Any]:
         """Fetch one MAL ranking page with rate-limit handling."""
@@ -156,7 +109,7 @@ class MalSource(CachedMetadataSource):
         }
         headers = {
             "Accept": "application/json",
-            "Authorization": f"Bearer {token}",
+            "X-MAL-CLIENT-ID": client_id,
         }
 
         while True:

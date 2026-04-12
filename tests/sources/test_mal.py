@@ -1,7 +1,5 @@
 import asyncio
 
-import pytest
-
 from anibridge_mappings.core.graph import IdMappingGraph
 from anibridge_mappings.core.meta import SourceMeta, SourceType
 from anibridge_mappings.sources.base import CachedMetadataSource
@@ -33,6 +31,7 @@ class _FakeSession:
         del kwargs
         self._get_responses = get_responses or []
         self._post_responses = post_responses or []
+        self.get_calls: list[dict] = []
 
     async def __aenter__(self):
         return self
@@ -41,7 +40,7 @@ class _FakeSession:
         return False
 
     def get(self, url: str, params: dict | None = None, headers: dict | None = None):
-        del url, params, headers
+        self.get_calls.append({"url": url, "params": params, "headers": headers})
         return self._get_responses.pop(0)
 
     def post(self, url: str, data: dict | None = None):
@@ -57,10 +56,6 @@ def test_mal_prepare_fetches_rankings_and_parses_metadata(
     source = MalSource()
 
     responses = _FakeSession(
-        post_responses=[
-            _FakeResponse(status=429, payload={}, headers={"Retry-After": "0"}),
-            _FakeResponse(status=200, payload={"access_token": "token-123"}),
-        ],
         get_responses=[
             _FakeResponse(status=429, payload={}, headers={"Retry-After": "0"}),
             _FakeResponse(
@@ -127,7 +122,6 @@ def test_mal_prepare_fetches_rankings_and_parses_metadata(
     )
 
     monkeypatch.setenv("MAL_CLIENT_ID", "client-id")
-    monkeypatch.setenv("MAL_API_KEY", "refresh-token")
     monkeypatch.setattr(
         "anibridge_mappings.sources.mal.aiohttp.ClientSession",
         lambda **kwargs: responses,
@@ -139,6 +133,11 @@ def test_mal_prepare_fetches_rankings_and_parses_metadata(
     monkeypatch.setattr("anibridge_mappings.sources.mal.asyncio.sleep", _fake_sleep)
 
     asyncio.run(source.prepare())
+
+    assert responses.get_calls[0]["headers"] == {
+        "Accept": "application/json",
+        "X-MAL-CLIENT-ID": "client-id",
+    }
 
     meta_1 = source._cache["1"]
     assert meta_1 is not None
@@ -163,17 +162,36 @@ def test_mal_prepare_fetches_rankings_and_parses_metadata(
     assert meta_3[None].type is SourceType.TV
 
 
-def test_mal_prepare_requires_client_id_for_raw_refresh_token(
+def test_mal_prepare_uses_default_client_id_when_env_is_blank(
     monkeypatch,
     tmp_path,
 ) -> None:
     CachedMetadataSource.DATA_DIR = tmp_path
     source = MalSource()
-    monkeypatch.setenv("MAL_API_KEY", "refresh-token-only")
     monkeypatch.setenv("MAL_CLIENT_ID", "")
 
-    with pytest.raises(RuntimeError, match="MAL metadata fetches require"):
-        asyncio.run(source.prepare())
+    responses = _FakeSession(
+        get_responses=[
+            _FakeResponse(
+                status=200,
+                payload={
+                    "data": [],
+                    "paging": {},
+                },
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        "anibridge_mappings.sources.mal.aiohttp.ClientSession",
+        lambda **kwargs: responses,
+    )
+
+    asyncio.run(source.prepare())
+
+    assert responses.get_calls[0]["headers"] == {
+        "Accept": "application/json",
+        "X-MAL-CLIENT-ID": MalSource.DEFAULT_CLIENT_ID,
+    }
 
 
 def test_mal_collect_metadata_uses_cached_entries_and_marks_misses(tmp_path) -> None:

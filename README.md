@@ -151,7 +151,7 @@ Options:
 - `--provenance`: emit `provenance.zip` containing `manifest.json`, `descriptor-index.json`, and `descriptors/*.json` files
 - `--log-level`: set logging verbosity (default: `INFO`)
 
-_Note: TMDB, TVDB, and MAL metadata fetching require authentication in `TMDB_API_KEY`, `TVDB_API_KEY`, and `MAL_API_KEY`. MAL uses public OAuth refresh auth with `MAL_CLIENT_ID` and a refresh token stored in `MAL_API_KEY`._
+_Note: TMDB and TVDB metadata fetching require authentication in `TMDB_API_KEY` and `TVDB_API_KEY`. MAL ranking metadata uses `MAL_CLIENT_ID` only, and falls back to the public client ID baked into the source when unset._
 
 ## Contributing
 

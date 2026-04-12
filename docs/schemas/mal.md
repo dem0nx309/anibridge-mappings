@@ -2,35 +2,11 @@
 
 ## Authentication
 
-### OAuth Token Endpoint
-
-```
-POST https://myanimelist.net/v1/oauth2/token
-```
-
-**Form fields**:
-
-- `grant_type`: always `refresh_token`
-- `refresh_token`: from `MAL_API_KEY`
-- `client_id`: from `MAL_CLIENT_ID`
+The ranking crawl uses MAL's client ID header directly.
 
 **Environment variables**:
 
-- `MAL_API_KEY`: required refresh token
 - `MAL_CLIENT_ID`: MAL client ID; defaults to the public client ID baked into the source when unset
-
-**Response**:
-
-```json
-{
-  "token_type": "Bearer",
-  "expires_in": 2678400,
-  "access_token": "<access-token>",
-  "refresh_token": "<refresh-token>"
-}
-```
-
-The `access_token` is used as `Authorization: Bearer {token}` in subsequent ranking requests.
 
 ---
 
@@ -45,7 +21,7 @@ GET https://api.myanimelist.net/v2/anime/ranking
 **Headers**:
 
 - `Accept: application/json`
-- `Authorization: Bearer {access_token}`
+- `X-MAL-CLIENT-ID: {client_id}`
 
 ### Query Parameters
 
@@ -104,4 +80,4 @@ The source crawls the ranking endpoint until `paging.next` is absent. The next p
 
 ## Rate Limiting
 
-HTTP 429 responses are handled by reading the `Retry-After` header and sleeping `Retry-After + 1` seconds. This retry behavior is used for both token refresh and ranking requests.
+HTTP 429 responses are handled by reading the `Retry-After` header and sleeping `Retry-After + 1` seconds.
