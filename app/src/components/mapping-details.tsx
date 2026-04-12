@@ -10,6 +10,13 @@ import {
   descriptorToExternal,
   formatMappingView,
 } from "../utils/mapping-presentation";
+import {
+  fetchMetadata,
+  getPosterUrl,
+  resolveMetadata,
+  type MetadataEnvelope,
+  type ResolvedMetadata,
+} from "../utils/metadata-api";
 
 import type { Dict, Mapping } from "../utils/provenance";
 import { getDictValue } from "../utils/provenance";
@@ -19,6 +26,308 @@ const MAPPING_VIEW_FORMAT_STORAGE_KEY = "anibridge:mapping-view-format";
 const getStoredFormat = (): MappingViewFormat => {
   const v = window.localStorage.getItem(MAPPING_VIEW_FORMAT_STORAGE_KEY);
   return v === "yaml" ? "yaml" : "json";
+};
+
+const truncateText = (value: string | null | undefined, limit: number) => {
+  if (!value) return null;
+  if (value.length <= limit) return value;
+  return `${value.slice(0, limit - 1).trimEnd()}...`;
+};
+
+const formatRelease = (
+  startDate?: string | null,
+  endDate?: string | null,
+): string | null => {
+  if (!startDate && !endDate) return null;
+  if (startDate && endDate) return `${startDate} to ${endDate}`;
+  return startDate ?? endDate ?? null;
+};
+
+const formatScopeLabel = (metadata: ResolvedMetadata) => {
+  if (metadata.scopeKey) return `scope ${metadata.scopeKey}`;
+  return null;
+};
+
+const MetadataValue = ({
+  descriptor,
+  metadata,
+  loading,
+}: {
+  descriptor: string;
+  metadata: ResolvedMetadata | null;
+  loading: boolean;
+}) => {
+  if (loading) {
+    return (
+      <div class="text-xs text-slate-500 dark:text-slate-400">
+        Loading metadata...
+      </div>
+    );
+  }
+
+  if (!metadata) {
+    return (
+      <div class="text-xs text-slate-500 dark:text-slate-400">
+        No metadata found for {descriptor}.
+      </div>
+    );
+  }
+
+  const statusLabel =
+    metadata.release?.status && metadata.release.status !== "unknown"
+      ? metadata.release.status
+      : null;
+  const scopeLabel = formatScopeLabel(metadata);
+
+  return (
+    <div class="min-w-0 text-xs text-slate-700 dark:text-slate-200">
+      <div class="font-mono text-[11px] text-slate-500 dark:text-slate-400">
+        {metadata.id.descriptor}
+      </div>
+      <div class="mt-1 flex flex-wrap gap-1 text-[11px]">
+        <span class="border border-slate-300 bg-slate-100 px-1.5 py-0.5 dark:border-slate-500 dark:bg-slate-700">
+          {metadata.kind}
+        </span>
+        {scopeLabel ? (
+          <span class="border border-slate-300 bg-slate-100 px-1.5 py-0.5 dark:border-slate-500 dark:bg-slate-700">
+            {scopeLabel}
+          </span>
+        ) : null}
+        {statusLabel ? (
+          <span class="border border-slate-300 bg-slate-100 px-1.5 py-0.5 dark:border-slate-500 dark:bg-slate-700">
+            {statusLabel}
+          </span>
+        ) : null}
+        {metadata.classification.is_adult ? (
+          <span class="border border-rose-300 bg-rose-50 px-1.5 py-0.5 text-rose-700 dark:border-rose-700 dark:bg-rose-950/30 dark:text-rose-300">
+            adult
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+};
+
+const MetadataTitleValue = ({
+  descriptor,
+  metadata,
+  loading,
+}: {
+  descriptor: string;
+  metadata: ResolvedMetadata | null;
+  loading: boolean;
+}) => {
+  const posterUrl = metadata ? getPosterUrl(metadata.images) : null;
+  const originalTitle = metadata?.titles.original;
+
+  return (
+    <div class="grid min-h-[96px] grid-cols-[72px_minmax(0,1fr)] gap-2">
+      {posterUrl ? (
+        <img
+          src={posterUrl}
+          alt=""
+          class="h-full w-full border border-slate-300 object-cover dark:border-slate-600"
+        />
+      ) : (
+        <div class="flex h-full min-h-[96px] items-center justify-center border border-dashed border-slate-300 bg-slate-50 text-[11px] uppercase tracking-[0.03em] text-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-500">
+          No image
+        </div>
+      )}
+      <div class="min-w-0">
+        {loading ? (
+          <div class="text-xs text-slate-500 dark:text-slate-400">
+            Loading metadata...
+          </div>
+        ) : !metadata ? (
+          <div class="text-xs text-slate-500 dark:text-slate-400">
+            No metadata found for {descriptor}.
+          </div>
+        ) : null}
+        {metadata ? (
+          <>
+            <div class="text-sm font-semibold text-slate-900 dark:text-slate-50">
+              {metadata.titles.display}
+            </div>
+            {originalTitle ? (
+              <div class="mt-0.5 text-xs text-slate-600 dark:text-slate-300">
+                {originalTitle}
+              </div>
+            ) : null}
+            <div class="mt-2">
+              <MetadataValue
+                descriptor={descriptor}
+                metadata={metadata}
+                loading={false}
+              />
+            </div>
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+};
+
+const MetadataRow = ({
+  label,
+  source,
+  target,
+  multiline = false,
+}: {
+  label: string;
+  source: string | null;
+  target: string | null;
+  multiline?: boolean;
+}) => {
+  const cellClass = multiline
+    ? "px-2 py-2 text-xs leading-5 text-slate-700 dark:text-slate-200"
+    : "px-2 py-1.5 text-xs text-slate-700 dark:text-slate-200";
+
+  return (
+    <div class="grid grid-cols-[88px_minmax(0,1fr)_minmax(0,1fr)] border-t border-slate-300 dark:border-slate-600">
+      <div class="bg-slate-100 px-2 py-1.5 text-[10px] uppercase tracking-[0.03em] text-slate-500 dark:bg-slate-700 dark:text-slate-300">
+        {label}
+      </div>
+      <div
+        class={`border-l border-slate-300 dark:border-slate-600 ${cellClass}`}
+      >
+        {source ?? <span class="text-slate-400 dark:text-slate-500">-</span>}
+      </div>
+      <div
+        class={`border-l border-slate-300 dark:border-slate-600 ${cellClass}`}
+      >
+        {target ?? <span class="text-slate-400 dark:text-slate-500">-</span>}
+      </div>
+    </div>
+  );
+};
+
+const MetadataComparison = ({
+  sourceDescriptor,
+  targetDescriptor,
+  sourceMetadata,
+  targetMetadata,
+  sourceEnvelope,
+  targetEnvelope,
+  metadataLoading,
+}: {
+  sourceDescriptor: string;
+  targetDescriptor: string;
+  sourceMetadata: ResolvedMetadata | null;
+  targetMetadata: ResolvedMetadata | null;
+  sourceEnvelope: MetadataEnvelope | null;
+  targetEnvelope: MetadataEnvelope | null;
+  metadataLoading: boolean;
+}) => {
+  const sourceRelease = sourceMetadata
+    ? formatRelease(
+        sourceMetadata.release?.start_date,
+        sourceMetadata.release?.end_date,
+      )
+    : null;
+  const targetRelease = targetMetadata
+    ? formatRelease(
+        targetMetadata.release?.start_date,
+        targetMetadata.release?.end_date,
+      )
+    : null;
+  const sourceRuntime = sourceMetadata?.runtime
+    ? `${sourceMetadata.runtime.minutes} min (${sourceMetadata.runtime.basis})`
+    : null;
+  const targetRuntime = targetMetadata?.runtime
+    ? `${targetMetadata.runtime.minutes} min (${targetMetadata.runtime.basis})`
+    : null;
+  const sourceGenres = sourceMetadata?.classification.genres.length
+    ? sourceMetadata.classification.genres.join(" • ")
+    : null;
+  const targetGenres = targetMetadata?.classification.genres.length
+    ? targetMetadata.classification.genres.join(" • ")
+    : null;
+  const sourceSynopsis = sourceMetadata
+    ? truncateText(sourceMetadata.synopsis, 320)
+    : null;
+  const targetSynopsis = targetMetadata
+    ? truncateText(targetMetadata.synopsis, 320)
+    : null;
+
+  return (
+    <div class="overflow-auto">
+      <div class="min-w-[720px]">
+        <div class="grid grid-cols-[88px_minmax(0,1fr)_minmax(0,1fr)]">
+          <div class="bg-slate-100 px-2 py-1.5 text-[10px] uppercase tracking-[0.03em] text-slate-500 dark:bg-slate-700 dark:text-slate-300">
+            Field
+          </div>
+          <div class="border-l border-slate-300 bg-slate-100 px-2 py-1.5 text-[10px] uppercase tracking-[0.03em] text-slate-500 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300">
+            Source
+          </div>
+          <div class="border-l border-slate-300 bg-slate-100 px-2 py-1.5 text-[10px] uppercase tracking-[0.03em] text-slate-500 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300">
+            Target
+          </div>
+        </div>
+
+        <div class="grid grid-cols-[88px_minmax(0,1fr)_minmax(0,1fr)] border-t border-slate-300 dark:border-slate-600">
+          <div class="bg-slate-100 px-2 py-2 text-[10px] uppercase tracking-[0.03em] text-slate-500 dark:bg-slate-700 dark:text-slate-300">
+            Title
+          </div>
+          <div class="border-l border-slate-300 px-2 py-2 dark:border-slate-600">
+            <MetadataTitleValue
+              descriptor={sourceDescriptor}
+              metadata={sourceMetadata}
+              loading={
+                metadataLoading && !sourceEnvelope && Boolean(sourceDescriptor)
+              }
+            />
+          </div>
+          <div class="border-l border-slate-300 px-2 py-2 dark:border-slate-600">
+            <MetadataTitleValue
+              descriptor={targetDescriptor}
+              metadata={targetMetadata}
+              loading={
+                metadataLoading && !targetEnvelope && Boolean(targetDescriptor)
+              }
+            />
+          </div>
+        </div>
+
+        <MetadataRow
+          label="Release"
+          source={sourceRelease}
+          target={targetRelease}
+        />
+        <MetadataRow
+          label="Runtime"
+          source={sourceRuntime}
+          target={targetRuntime}
+        />
+        <MetadataRow
+          label="Units"
+          source={
+            sourceMetadata?.units !== null &&
+            sourceMetadata?.units !== undefined
+              ? `${sourceMetadata.units}`
+              : null
+          }
+          target={
+            targetMetadata?.units !== null &&
+            targetMetadata?.units !== undefined
+              ? `${targetMetadata.units}`
+              : null
+          }
+        />
+        <MetadataRow
+          label="Genres"
+          source={sourceGenres}
+          target={targetGenres}
+          multiline
+        />
+        <MetadataRow
+          label="Synopsis"
+          source={sourceSynopsis}
+          target={targetSynopsis}
+          multiline
+        />
+      </div>
+    </div>
+  );
 };
 
 type MappingDetailsProps = {
@@ -74,13 +383,35 @@ export const MappingDetails = ({
 }: MappingDetailsProps) => {
   const [mappingViewFormat, setMappingViewFormat] =
     useState<MappingViewFormat>(getStoredFormat);
+  const [metadataOpen, setMetadataOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
   const [timelineStep, setTimelineStep] = useState(0);
+  const [sourceEnvelope, setSourceEnvelope] = useState<MetadataEnvelope | null>(
+    null,
+  );
+  const [targetEnvelope, setTargetEnvelope] = useState<MetadataEnvelope | null>(
+    null,
+  );
+  const [metadataLoading, setMetadataLoading] = useState(false);
 
   const selectedSource = getDictValue(dict, "descriptors", selected.s);
   const selectedTarget = getDictValue(dict, "descriptors", selected.t);
   const selectedSourceExternal = descriptorToExternal(selectedSource);
   const selectedTargetExternal = descriptorToExternal(selectedTarget);
+  const sourceMetadata = useMemo(
+    () =>
+      sourceEnvelope && selectedSource
+        ? resolveMetadata(sourceEnvelope.metadata, selectedSource)
+        : null,
+    [selectedSource, sourceEnvelope],
+  );
+  const targetMetadata = useMemo(
+    () =>
+      targetEnvelope && selectedTarget
+        ? resolveMetadata(targetEnvelope.metadata, selectedTarget)
+        : null,
+    [selectedTarget, targetEnvelope],
+  );
 
   const finalMappingView = useMemo(() => {
     const obj = buildFinalMappingObject(dict, selected);
@@ -102,6 +433,40 @@ export const MappingDetails = ({
       mappingViewFormat,
     );
   }, [mappingViewFormat]);
+
+  useEffect(() => {
+    if (!metadataOpen) return;
+
+    let active = true;
+    setMetadataLoading(Boolean(selectedSource || selectedTarget));
+    setSourceEnvelope(null);
+    setTargetEnvelope(null);
+
+    Promise.all([
+      selectedSource ? fetchMetadata(selectedSource) : Promise.resolve(null),
+      selectedTarget ? fetchMetadata(selectedTarget) : Promise.resolve(null),
+    ])
+      .then(([sourceResult, targetResult]) => {
+        if (!active) return;
+        setSourceEnvelope(sourceResult);
+        setTargetEnvelope(targetResult);
+      })
+      .finally(() => {
+        if (active) setMetadataLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [metadataOpen, selectedSource, selectedTarget]);
+
+  useEffect(() => {
+    setMetadataOpen(false);
+    setMetadataLoading(false);
+    setSourceEnvelope(null);
+    setTargetEnvelope(null);
+  }, [selectedSource, selectedTarget]);
+
   const timelineCurrent = timelineSlides[timelineStep] ?? null;
 
   return (
@@ -214,6 +579,34 @@ export const MappingDetails = ({
           </pre>
         </div>
       </section>
+
+      <details
+        open={metadataOpen}
+        onToggle={(event: MouseEvent) =>
+          setMetadataOpen((event.currentTarget as HTMLDetailsElement).open)
+        }
+        class="mt-2 border border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-800"
+      >
+        <summary class="cursor-pointer border-b border-slate-300 bg-slate-100 px-2 py-1.5 text-xs font-semibold dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100">
+          Metadata
+        </summary>
+
+        {!metadataOpen ? (
+          <p class="m-0 px-2 py-2 text-xs text-slate-600 dark:text-slate-300">
+            Expand to load metadata.
+          </p>
+        ) : (
+          <MetadataComparison
+            sourceDescriptor={selectedSource}
+            targetDescriptor={selectedTarget}
+            sourceMetadata={sourceMetadata}
+            targetMetadata={targetMetadata}
+            sourceEnvelope={sourceEnvelope}
+            targetEnvelope={targetEnvelope}
+            metadataLoading={metadataLoading}
+          />
+        )}
+      </details>
 
       <details
         open={timelineOpen}
