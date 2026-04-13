@@ -62,12 +62,36 @@ jobs:
       - name: Run pytest
         run: uv run pytest
 
-  build:
-    name: Build Release
-    if: ${{ secrets.TMDB_API_KEY != '' && secrets.TVDB_API_KEY != '' }}
+  release-check:
+    name: Release Check
     needs:
       - lint
       - tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - name: Check release secrets
+        id: check
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          TVDB_API_KEY: ${{ secrets.TVDB_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "$TMDB_API_KEY" ] && [ -n "$TVDB_API_KEY" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Build Release
+    if: ${{ needs.release-check.outputs.ready == 'true' }}
+    needs:
+      - release-check
     runs-on: ubuntu-latest
     environment: publish
     permissions:
@@ -185,9 +209,10 @@ jobs:
 
   diff:
     name: Diff Release
-    if: ${{ secrets.TMDB_API_KEY != '' && secrets.TVDB_API_KEY != '' }}
+    if: ${{ needs.release-check.outputs.ready == 'true' }}
     needs:
       - build
+      - release-check
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -261,9 +286,10 @@ jobs:
 
   publish:
     name: Publish Release
-    if: ${{ github.event_name != 'pull_request' && secrets.TMDB_API_KEY != '' && secrets.TVDB_API_KEY != '' }}
+    if: ${{ github.event_name != 'pull_request' && needs.release-check.outputs.ready == 'true' }}
     needs:
       - build
+      - release-check
     runs-on: ubuntu-latest
     environment: publish
     permissions:
@@ -332,10 +358,9 @@ jobs:
 
   release-prereqs:
     name: Release Prerequisites
-    if: ${{ secrets.TMDB_API_KEY == '' || secrets.TVDB_API_KEY == '' }}
+    if: ${{ needs.release-check.outputs.ready != 'true' }}
     needs:
-      - lint
-      - tests
+      - release-check
     runs-on: ubuntu-latest
     permissions:
       contents: read
