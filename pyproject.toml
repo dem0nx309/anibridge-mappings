@@ -29,8 +29,8 @@ dependencies = [
 [project.urls]
 Homepage = "https://anibridge.eliasbenb.dev"
 Documentation = "https://anibridge.eliasbenb.dev"
-Source = "https://github.com/anibridge/anibridge-mappings"
-Issues = "https://github.com/anibridge/anibridge-mappings/issues"
+Source = "https://github.com/dem0nx309/anibridge-mappings"
+Issues = "https://github.com/dem0nx309/anibridge-mappings/issues"
 
 [tool.ruff]
 indent-width = 4

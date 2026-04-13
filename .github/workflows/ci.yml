@@ -64,6 +64,7 @@ jobs:
 
   build:
     name: Build Release
+    if: ${{ secrets.TMDB_API_KEY != '' && secrets.TVDB_API_KEY != '' }}
     needs:
       - lint
       - tests
@@ -184,6 +185,7 @@ jobs:
 
   diff:
     name: Diff Release
+    if: ${{ secrets.TMDB_API_KEY != '' && secrets.TVDB_API_KEY != '' }}
     needs:
       - build
     runs-on: ubuntu-latest
@@ -259,7 +261,7 @@ jobs:
 
   publish:
     name: Publish Release
-    if: ${{ github.event_name != 'pull_request' }}
+    if: ${{ github.event_name != 'pull_request' && secrets.TMDB_API_KEY != '' && secrets.TVDB_API_KEY != '' }}
     needs:
       - build
     runs-on: ubuntu-latest
@@ -327,3 +329,28 @@ jobs:
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ github.token }}
+
+  release-prereqs:
+    name: Release Prerequisites
+    if: ${{ secrets.TMDB_API_KEY == '' || secrets.TVDB_API_KEY == '' }}
+    needs:
+      - lint
+      - tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Explain why release jobs were skipped
+        run: |
+          {
+            echo "## Release jobs skipped"
+            echo ""
+            echo "The fork is healthy for linting and tests, but release generation requires repository secrets."
+            echo ""
+            echo "Missing required secrets:"
+            [ -n "${{ secrets.TMDB_API_KEY }}" ] || echo "- TMDB_API_KEY"
+            [ -n "${{ secrets.TVDB_API_KEY }}" ] || echo "- TVDB_API_KEY"
+            echo ""
+            echo "Add the missing secrets in:"
+            echo "Settings > Secrets and variables > Actions"
+          } >> "$GITHUB_STEP_SUMMARY"
