@@ -36,6 +36,7 @@ from anibridge_mappings.sources.base import (
     IdMappingSource,
     MetadataSource,
 )
+from anibridge_mappings.sources.hyakanime import HyakAnimeSource
 from anibridge_mappings.sources.mal import MalSource
 from anibridge_mappings.sources.qlever import (
     QleverImdbMovieSource,
@@ -432,6 +433,7 @@ def default_aggregator() -> MappingAggregator:
     anime_aggregations = AnimeAggregationsSource()
     anime_lists = AnimeListsSource()
     anime_offline_db = AnimeOfflineDatabaseSource()
+    hyakanime = HyakAnimeSource()
     shinkro_tmdb = ShinkroTmdbMappingSource()
     shinkro_tvdb = ShinkroTvdbMappingSource()
     qlever_imdb_movie = QleverImdbMovieSource()
@@ -442,6 +444,7 @@ def default_aggregator() -> MappingAggregator:
         anime_offline_db,
         anilist,
         anime_aggregations,
+        hyakanime,
         mal,
         qlever_imdb_movie,
         qlever_imdb_show,
@@ -462,6 +465,7 @@ def default_aggregator() -> MappingAggregator:
             anime_aggregations,
             anime_lists,
             anime_offline_db,
+            hyakanime,
             shinkro_tmdb,
             shinkro_tvdb,
             qlever_wikidata,
