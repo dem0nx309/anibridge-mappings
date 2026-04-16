@@ -6,6 +6,7 @@ from anibridge_mappings.core.aggregator import (
     _episode_source_contributor,
     _validation_prune_reason,
     build_schema_payload,
+    default_aggregator,
 )
 from anibridge_mappings.core.graph import EpisodeMappingGraph, IdMappingGraph
 from anibridge_mappings.core.meta import MetaStore
@@ -99,3 +100,39 @@ def test_validation_reason_and_source_contributor_helpers() -> None:
 
     src = StubEpisodeSource()
     assert _episode_source_contributor(src).endswith(":StubEpisodeSource")
+
+
+def test_default_aggregator_skips_tmdb_and_tvdb_metadata_without_api_keys(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("TMDB_API_KEY", raising=False)
+    monkeypatch.delenv("TVDB_API_KEY", raising=False)
+
+    aggregator = default_aggregator()
+    provider_keys = {
+        getattr(source, "provider_key", source.__class__.__name__)
+        for source in aggregator._metadata_sources
+    }
+
+    assert "tmdb_show" not in provider_keys
+    assert "tmdb_movie" not in provider_keys
+    assert "tvdb_show" not in provider_keys
+    assert "tvdb_movie" not in provider_keys
+
+
+def test_default_aggregator_enables_tmdb_and_tvdb_metadata_when_api_keys_exist(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "tmdb-token")
+    monkeypatch.setenv("TVDB_API_KEY", "tvdb-token")
+
+    aggregator = default_aggregator()
+    provider_keys = {
+        getattr(source, "provider_key", source.__class__.__name__)
+        for source in aggregator._metadata_sources
+    }
+
+    assert "tmdb_show" in provider_keys
+    assert "tmdb_movie" in provider_keys
+    assert "tvdb_show" in provider_keys
+    assert "tvdb_movie" in provider_keys

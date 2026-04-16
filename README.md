@@ -14,7 +14,7 @@ _A huge thank you to the primary mappings maintainer, [@LuceoEtzio](https://gith
 
 ## Download
 
-The latest mappings can be downloaded from the [releases page](https://github.com/anibridge/anibridge-mappings/releases). The release assets include:
+The latest mappings can be downloaded from the [releases page](https://github.com/dem0nx309/anibridge-mappings/releases). The release assets include:
 
 - [`mappings.json`](https://github.com/dem0nx309/anibridge-mappings/releases/download/v3/mappings.json): the main dataset in JSON format.
 - [`mappings.json.zst`](https://github.com/dem0nx309/anibridge-mappings/releases/download/v3/mappings.json.zst): the main dataset compressed with zstd.
@@ -151,24 +151,31 @@ Options:
 - `--provenance`: emit `provenance.zip` containing `manifest.json`, `descriptor-index.json`, and `descriptors/*.json` files
 - `--log-level`: set logging verbosity (default: `INFO`)
 
-_Note: TMDB and TVDB metadata fetching require authentication in `TMDB_API_KEY` and `TVDB_API_KEY`. MAL ranking metadata uses `MAL_CLIENT_ID` only, and falls back to the public client ID baked into the source when unset._
+_Note: TMDB and TVDB metadata fetching are optional in this fork. If `TMDB_API_KEY` and `TVDB_API_KEY` are unset, the pipeline skips those metadata enrichments and still builds the anime-centric mappings. MAL ranking metadata uses `MAL_CLIENT_ID` only, and falls back to the public client ID baked into the source when unset._
 
 ## Fork Setup
 
-This fork is configured so that linting and tests run even when release secrets are missing. The release jobs are skipped until the required secrets are configured.
+This fork is configured to build and publish without requiring TMDB or TVDB secrets. Those providers are treated as optional metadata enrichments in this fork.
 
-To make this fork publish its own mappings release assets:
+Optional secrets:
 
-1. Add `TMDB_API_KEY` in GitHub Actions secrets.
-2. Add `TVDB_API_KEY` in GitHub Actions secrets.
-3. Optionally add `MAL_CLIENT_ID` if you want to override the built-in fallback.
-4. Run the `CI` workflow manually from the Actions tab, or push to `main`.
+1. Add `TMDB_API_KEY` if you want TMDB metadata enrichment.
+2. Add `TVDB_API_KEY` if you want TVDB metadata enrichment.
+3. Add `MAL_CLIENT_ID` if you want to override the built-in MAL fallback client ID.
+
+Without those secrets, the fork still:
+
+- runs lint and tests
+- builds the mappings payload
+- publishes release assets from this repository
+
+To publish or refresh this fork's own release assets, run the `CI` workflow manually from the Actions tab, or push to `main`.
 
 GitHub path:
 
 - `Settings` -> `Secrets and variables` -> `Actions`
 
-Once the secrets are present, the workflow will build mappings, publish release assets to this fork, and update the `v3` release tag in this repository.
+When optional secrets are present, the workflow enriches the generated dataset with TMDB and/or TVDB metadata before publishing the `v3` release assets in this repository.
 
 ## Contributing
 

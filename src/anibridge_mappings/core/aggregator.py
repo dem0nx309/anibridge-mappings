@@ -2,6 +2,7 @@
 
 import asyncio
 import importlib.metadata
+import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -433,28 +434,30 @@ def default_aggregator() -> MappingAggregator:
     anime_offline_db = AnimeOfflineDatabaseSource()
     shinkro_tmdb = ShinkroTmdbMappingSource()
     shinkro_tvdb = ShinkroTvdbMappingSource()
-    tmdb_show = TmdbShowSource()
-    tmdb_movie = TmdbMovieSource()
-    tvdb_movie = TvdbMovieSource()
-    tvdb_show = TvdbShowSource()
     qlever_imdb_movie = QleverImdbMovieSource()
     qlever_imdb_show = QleverImdbShowSource()
     qlever_wikidata = QleverWikidataSource()
 
+    metadata_sources: list[MetadataSource] = [
+        anime_offline_db,
+        anilist,
+        anime_aggregations,
+        mal,
+        qlever_imdb_movie,
+        qlever_imdb_show,
+    ]
+
+    # TMDB/TVDB metadata enrichments are optional in this fork. When their API
+    # keys are absent, we still build the anime-centric mapping graph using the
+    # static upstream datasets.
+    if _has_non_empty_env("TMDB_API_KEY"):
+        metadata_sources.extend((TmdbShowSource(), TmdbMovieSource()))
+    if _has_non_empty_env("TVDB_API_KEY"):
+        metadata_sources.extend((TvdbMovieSource(), TvdbShowSource()))
+
     return MappingAggregator(
         # Order matters for metadata; later sources have higher precedence
-        metadata_sources=(
-            anime_offline_db,
-            anilist,
-            anime_aggregations,
-            mal,
-            qlever_imdb_movie,
-            qlever_imdb_show,
-            tmdb_show,
-            tmdb_movie,
-            tvdb_movie,
-            tvdb_show,
-        ),
+        metadata_sources=tuple(metadata_sources),
         id_sources=(
             anime_aggregations,
             anime_lists,
@@ -470,3 +473,9 @@ def default_aggregator() -> MappingAggregator:
         ),
         validators=(MappingRangeValidator(),),
     )
+
+
+def _has_non_empty_env(name: str) -> bool:
+    """Return whether environment variable `name` has a usable value."""
+    value = os.environ.get(name)
+    return value is not None and value.strip() != ""

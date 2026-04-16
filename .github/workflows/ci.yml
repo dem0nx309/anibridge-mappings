@@ -62,36 +62,11 @@ jobs:
       - name: Run pytest
         run: uv run pytest
 
-  release-check:
-    name: Release Check
+  build:
+    name: Build Release
     needs:
       - lint
       - tests
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    outputs:
-      ready: ${{ steps.check.outputs.ready }}
-    steps:
-      - name: Check release secrets
-        id: check
-        env:
-          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
-          TVDB_API_KEY: ${{ secrets.TVDB_API_KEY }}
-        run: |
-          set -euo pipefail
-
-          if [ -n "$TMDB_API_KEY" ] && [ -n "$TVDB_API_KEY" ]; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-          fi
-
-  build:
-    name: Build Release
-    if: ${{ needs.release-check.outputs.ready == 'true' }}
-    needs:
-      - release-check
     runs-on: ubuntu-latest
     environment: publish
     permissions:
@@ -209,10 +184,8 @@ jobs:
 
   diff:
     name: Diff Release
-    if: ${{ needs.release-check.outputs.ready == 'true' }}
     needs:
       - build
-      - release-check
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -286,10 +259,9 @@ jobs:
 
   publish:
     name: Publish Release
-    if: ${{ github.event_name != 'pull_request' && needs.release-check.outputs.ready == 'true' }}
+    if: ${{ github.event_name != 'pull_request' }}
     needs:
       - build
-      - release-check
     runs-on: ubuntu-latest
     environment: publish
     permissions:
@@ -355,27 +327,3 @@ jobs:
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ github.token }}
-
-  release-prereqs:
-    name: Release Prerequisites
-    if: ${{ needs.release-check.outputs.ready != 'true' }}
-    needs:
-      - release-check
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Explain why release jobs were skipped
-        run: |
-          {
-            echo "## Release jobs skipped"
-            echo ""
-            echo "The fork is healthy for linting and tests, but release generation requires repository secrets."
-            echo ""
-            echo "Missing required secrets:"
-            [ -n "${{ secrets.TMDB_API_KEY }}" ] || echo "- TMDB_API_KEY"
-            [ -n "${{ secrets.TVDB_API_KEY }}" ] || echo "- TVDB_API_KEY"
-            echo ""
-            echo "Add the missing secrets in:"
-            echo "Settings > Secrets and variables > Actions"
-          } >> "$GITHUB_STEP_SUMMARY"
