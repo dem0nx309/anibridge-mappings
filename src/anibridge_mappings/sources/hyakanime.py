@@ -67,9 +67,7 @@ class HyakAnimeEntry(BaseModel):
         if value is None or not isinstance(value, list):
             return []
         return [
-            item.strip()
-            for item in value
-            if isinstance(item, str) and item.strip()
+            item.strip() for item in value if isinstance(item, str) and item.strip()
         ]
 
     @field_validator("average_duration", mode="before")
